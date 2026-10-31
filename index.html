@@ -141,6 +141,18 @@ label.chk input{accent-color:var(--lime);width:16px;height:16px}
 .setgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .hint{color:var(--mu);font-size:13.5px;margin-bottom:12px}
 footer{color:var(--mu);font-size:13px;text-align:center;padding:30px 0 40px}
+.tw{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;min-width:560px}
+.tbl th{text-align:left;color:var(--mu);font-weight:500;font-size:13.5px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.tbl td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:1px solid var(--line)}
+.tbl tfoot td{border-bottom:0;font-weight:700;background:var(--card2)}
+.tbl td.net{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;text-align:left;white-space:nowrap}
+.tbl td.net small{font-size:12.5px}
+.tbl .ta{text-align:right;white-space:nowrap}
+.mb{height:5px;background:var(--card2);border-radius:3px;margin-top:7px;max-width:170px;overflow:hidden}
+.mb i{display:block;height:100%;background:var(--blue)}
+.mb i.l{background:var(--lime)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 @media print{
   body{background:#fff;color:#000}header .hr,nav,.acts,.filters,.btn,footer,#toast{display:none!important}
@@ -198,7 +210,7 @@ const clean = o => JSON.parse(JSON.stringify(o));
 const ADMIN_EMAILS = ['laltai@parves.com', 'khaled@fima.com'];
 const CATS = ['Food', 'Transport', 'Stay', 'Tickets', 'Shopping', 'Fuel', 'Medical', 'Other'];
 
-const DEF = () => ({people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', budget: 0, cur: '৳'}});
+const DEF = () => ({people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', destination: '', start: '', end: '', budget: 0, cur: '৳'}});
 let S = DEF(), ADMIN = false, B = null, tab = 'dash';
 const F = {q: '', cat: '', who: '', from: '', to: '', sort: 'date-desc', del: false};
 const CF = {who: '', q: '', del: false};
@@ -207,7 +219,10 @@ const G = {F, CF, HF};
 
 const money = n => S.settings.cur + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2});
 const act = a => a.filter(x => !x.deleted);
-const pname = id => S.people.find(p => p.id === id)?.name || 'Unknown';
+const PEND = {};
+const pname = id => S.people.find(p => p.id === id)?.name || PEND[id] || 'Unknown';
+const nowT = () => { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const fmtClock = t => { if (!t) return ''; const [h, m] = t.split(':'); return (+h % 12 || 12) + ':' + m + (+h < 12 ? ' am' : ' pm'); };
 const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2400); };
 
 /* ---------- backends ---------- */
@@ -254,7 +269,7 @@ async function fbBackend() {
       ['people', 'expenses', 'contributions', 'history'].forEach(c =>
         Fs.onSnapshot(Fs.collection(db, c), s => { st[c] = s.docs.map(d => ({...d.data(), id: d.id})); cb(st); }));
       Fs.onSnapshot(Fs.doc(db, 'meta', 'settings'), s => { if (s.exists()) st.settings = {...DEF().settings, ...s.data()}; cb(st); });
-      A.onAuthStateChanged(auth, u => { ADMIN = !!u && ADMIN_EMAILS.includes(u.email); cb(st); });
+      A.onAuthStateChanged(auth, u => { ADMIN = !!u && ADMIN_EMAILS.includes((u.email || '').toLowerCase()); cb(st); });
     },
     async commit(ops) {
       for (let i = 0; i < ops.length; i += 400) {
@@ -280,18 +295,17 @@ async function fbBackend() {
 /* ---------- change tracking (git-like) ---------- */
 const COLL = {expense: 'expenses', contribution: 'contributions', person: 'people', settings: 'meta'};
 const FIELDS = {
-  expense: [['name','Name'],['amount','Amount'],['date','Track date'],['category','Category'],['place','Place'],['paidBy','Paid by'],['splitAmong','Split among'],['note','Notes'],['deleted','Deleted']],
-  contribution: [['personId','Person'],['amount','Amount'],['date','Date'],['note','Notes'],['deleted','Deleted']],
+  expense: [['name','Name'],['amount','Amount'],['date','Track date'],['time','Time'],['category','Category'],['place','Place'],['note','Notes'],['deleted','Deleted']],
+  contribution: [['personId','Person'],['amount','Amount'],['date','Date'],['time','Time'],['note','Notes'],['deleted','Deleted']],
   person: [['name','Name'],['deleted','Deleted']],
-  settings: [['trip','Trip name'],['budget','Budget'],['cur','Currency symbol']]
+  settings: [['trip','Trip name'],['destination','Destination'],['start','Start date'],['end','End date'],['budget','Target budget']]
 };
 function fmtVal(f, v) {
   if (f === 'amount' || f === 'budget') return money(v);
-  if (f === 'paidBy') return v === 'fund' ? 'Common fund' : pname(v);
   if (f === 'personId') return pname(v);
-  if (f === 'splitAmong') return !v || !v.length ? 'Everyone' : v.map(pname).join(', ');
   if (f === 'deleted') return v ? 'yes' : 'no';
-  if (f === 'date') return v ? fmtDate(v) : '-';
+  if (f === 'date' || f === 'start' || f === 'end') return v ? fmtDate(v) : '-';
+  if (f === 'time') return v ? fmtClock(v) : '-';
   return v === '' || v == null ? '-' : String(v);
 }
 function entName(type, o) {
@@ -300,7 +314,7 @@ function entName(type, o) {
   return o.name;
 }
 function current(type, id) {
-  if (type === 'settings') { const s = S.settings; return {id: 'settings', trip: s.trip, budget: s.budget, cur: s.cur}; }
+  if (type === 'settings') { const s = S.settings; return {id: 'settings', trip: s.trip, destination: s.destination || '', start: s.start || '', end: s.end || '', budget: s.budget}; }
   return S[COLL[type]].find(x => x.id === id);
 }
 function commitChange(type, before, after, reason, action) {
@@ -310,6 +324,7 @@ function commitChange(type, before, after, reason, action) {
     if (JSON.stringify(a ?? '') !== JSON.stringify(b ?? '')) changes.push({field: f, label: l, from: before ? fmtVal(f, a) : null, to: fmtVal(f, b)});
   });
   if (before && !changes.length) { toast('Nothing changed'); return false; }
+  if (type === 'person') PEND[after.id] = after.name;
   const nm = type === 'contribution' ? pname(after.personId) : entName(type, after), label = type === 'settings' ? 'settings' : type;
   const verb = {create: 'Added', update: 'Updated', delete: 'Deleted', restore: 'Restored', revert: 'Reverted'}[action];
   let message = `${verb} ${label} "${nm}"`;
@@ -320,92 +335,70 @@ function commitChange(type, before, after, reason, action) {
   const entry = {ts, who: 'admin', action, type, entityId: after.id, entityName: nm, changes, reason: reason || '', message,
     before: before ? clean(before) : null, after: clean(after), hash: hash(ts + JSON.stringify(after) + message)};
   B.commit([{c: COLL[type], id: after.id, data: after}, {c: 'history', id: uid(), data: entry}])
-    .catch(e => toast('Save failed: ' + (e.code || e.message)));
+    .catch(e => toast(e.code === 'permission-denied' ? 'Permission denied. Publish the Firestore rules for your admin email.' : 'Save failed: ' + (e.code || e.message)));
   return true;
 }
 
 /* ---------- calculations ---------- */
 function calc() {
   const ppl = act(S.people), ex = act(S.expenses), co = act(S.contributions);
-  const per = {}; S.people.forEach(p => per[p.id] = {p, contrib: 0, paid: 0, share: 0, net: 0});
-  let total = 0, fundSpent = 0, contribTotal = 0;
-  co.forEach(c => { const a = +c.amount; contribTotal += a; if (per[c.personId]) per[c.personId].contrib += a; });
-  ex.forEach(e => {
-    const a = +e.amount; total += a;
-    if (e.paidBy === 'fund') fundSpent += a; else if (per[e.paidBy]) per[e.paidBy].paid += a;
-    const ids = (e.splitAmong?.length ? e.splitAmong : ppl.map(p => p.id)).filter(id => per[id]);
-    ids.forEach(id => per[id].share += a / ids.length);
-  });
-  Object.values(per).forEach(r => r.net = r.contrib + r.paid - r.share);
-  return {per, total, fundSpent, contribTotal, fund: contribTotal - fundSpent, ex, co, ppl};
-}
-function settle(c) {
-  const r2 = x => Math.round(x * 100) / 100;
-  const n = Object.values(c.per).filter(r => !r.p.deleted || Math.abs(r.net) > .009).map(r => ({name: r.p.name, v: r2(r.net)}));
-  n.push({name: 'Common fund', v: r2(-c.fund)});
-  const cr = n.filter(x => x.v > .009).map(x => ({...x})).sort((a, b) => b.v - a.v);
-  const dr = n.filter(x => x.v < -.009).map(x => ({name: x.name, v: -x.v})).sort((a, b) => b.v - a.v);
-  const out = []; let i = 0, j = 0;
-  while (i < dr.length && j < cr.length) {
-    const m = Math.min(dr[i].v, cr[j].v);
-    out.push({from: dr[i].name, to: cr[j].name, amt: m});
-    dr[i].v -= m; cr[j].v -= m;
-    if (dr[i].v < .01) i++; if (cr[j].v < .01) j++;
-  }
-  return out;
+  const n = ppl.length, target = +S.settings.budget || 0, each = n ? target / n : 0;
+  const per = {}; S.people.forEach(p => per[p.id] = {p, given: 0, bal: 0});
+  let total = 0, collected = 0;
+  co.forEach(c => { const a = +c.amount; collected += a; if (per[c.personId]) per[c.personId].given += a; });
+  ex.forEach(e => total += +e.amount);
+  Object.values(per).forEach(r => r.bal = r.given - each);
+  return {per, n, target, each, total, collected, toCollect: Math.max(0, target - collected), fund: collected - total, ex, co, ppl};
 }
 
 /* ---------- views ---------- */
-const TABS = () => [['dash', 'Overview'], ['exp', 'Expenses'], ['con', 'Contributions'], ['ppl', 'People'], ['his', 'History'], ...(ADMIN ? [['set', 'Settings']] : [])];
+const TABS = () => [['dash', 'Overview'], ['exp', 'Expenses'], ['ppl', 'People'], ['his', 'History'], ['set', 'Trip management']];
 
 function render() {
   $('#tripName').textContent = S.settings.trip || 'Trip Ledger';
+  { const s = S.settings; $('.sub').textContent = [s.destination, s.start && (fmtDate(s.start) + (s.end ? ' to ' + fmtDate(s.end) : ''))].filter(Boolean).join(', ') || 'Shared trip expenses'; }
   document.title = (S.settings.trip || 'Trip') + ' | Trip Ledger';
   const live = B?.mode === 'firebase';
   $('#hdr').innerHTML = `
     <span class="pill ${navigator.onLine ? '' : 'off'}"><i></i>${!navigator.onLine ? 'Offline, will sync later' : live ? 'Live, shared' : 'Demo, this browser only'}</span>
     <button class="btn sm" data-act="print">Print</button>
     ${ADMIN ? `<span class="pill">Admin</span><button class="btn sm" data-act="logout">Sign out</button>` : `<button class="btn sm pri" data-act="login">Admin sign in</button>`}`;
-  if (tab === 'set' && !ADMIN) tab = 'dash';
   $('#nav').innerHTML = TABS().map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">${l}</button>`).join('');
-  const views = {dash: vDash, exp: vExp, con: vCon, ppl: vPpl, his: vHis, set: vSet};
+  const views = {dash: vDash, exp: vExp, ppl: vPpl, his: vHis, set: vSet};
   const keep = document.activeElement?.dataset?.f, pos = document.activeElement?.selectionStart;
   $('#app').innerHTML = (B?.mode === 'local' ? `<div class="banner">Demo mode: data is saved only in this browser. Add your Firebase config in <b>index.html</b> so the whole team sees the same data. Admin login here: admin / admin123.</div>` : '') + views[tab]();
-  $('#foot').textContent = `${act(S.expenses).length} expenses, ${S.history.length} recorded changes`;
+  $('#foot').textContent = 'Khaled 2026';
   if (keep) { const el = $(`[data-f="${keep}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} } }
 }
 
+const meter = (pct, l, r, warnAt) => `<div class="meter ${pct >= warnAt ? 'warn' : ''}"><div class="track"><div class="fill" style="width:${Math.min(100, pct)}%"></div></div><div class="cap"><span>${l}</span><span>${r}</span></div></div>`;
 function vDash() {
-  const c = calc(), b = +S.settings.budget || 0, pct = b ? c.total / b * 100 : 0;
+  const c = calc(), pct = c.target ? c.total / c.target * 100 : 0, cpct = c.target ? c.collected / c.target * 100 : 0;
   const days = new Set(c.ex.map(e => e.date)).size || 1;
-  const todayT = c.ex.filter(e => e.date === today()).reduce((s, e) => s + +e.amount, 0);
   const big = c.ex.slice().sort((a, b) => b.amount - a.amount)[0];
   const cats = {}; c.ex.forEach(e => cats[e.category] = (cats[e.category] || 0) + +e.amount);
-  const catRows = Object.entries(cats).sort((a, b) => b[1] - a[1]);
-  const cm = catRows[0]?.[1] || 1;
+  const catRows = Object.entries(cats).sort((a, b) => b[1] - a[1]), cm = catRows[0]?.[1] || 1;
   const pr = Object.values(c.per).filter(r => !r.p.deleted);
-  const pm = Math.max(...pr.map(r => Math.max(r.contrib, r.share)), 1);
   const recent = S.history.slice().sort((a, b) => b.ts - a.ts).slice(0, 4);
+  const noT = `<p class="hint" style="margin:8px 0 0">No target budget yet. ${ADMIN ? 'Set it in Trip management.' : 'The admin will set it.'}</p>`;
   return `
   <div class="grid g4">
     <div class="card stat hl"><div class="lbl">Spent so far</div><div class="num">${money(c.total)}</div></div>
-    <div class="card stat bl"><div class="lbl">Contributed by the team</div><div class="num">${money(c.contribTotal)}</div></div>
+    <div class="card stat bl"><div class="lbl">Collected from members</div><div class="num">${money(c.collected)}</div></div>
+    <div class="card stat"><div class="lbl">Still to collect</div><div class="num">${money(c.toCollect)}</div></div>
     <div class="card stat"><div class="lbl">Common fund left</div><div class="num">${money(c.fund)}</div></div>
-    <div class="card stat"><div class="lbl">Spent today</div><div class="num">${money(todayT)}</div></div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <div class="row between"><h2 style="margin:0">Budget</h2>${b ? `<span class="${pct > 100 ? 'chip' : ''}" style="color:${pct > 100 ? 'var(--lime)' : 'var(--mu)'}">${pct > 100 ? 'Over budget by ' + money(c.total - b) : money(b - c.total) + ' remaining'}</span>` : ''}</div>
-    ${b ? `<div class="meter ${pct >= 80 ? 'warn' : ''}"><div class="track"><div class="fill" style="width:${Math.min(100, pct)}%"></div></div>
-      <div class="cap"><span>${pct.toFixed(0)}% of ${money(b)} used</span><span>Average ${money(c.total / days)} per day with spending</span>${big ? `<span>Biggest: ${esc(big.name)}, ${money(big.amount)}</span>` : ''}</div></div>`
-    : `<p class="hint" style="margin:8px 0 0">No budget set. ${ADMIN ? 'Set one in Settings to see the meter.' : 'The admin can set a budget.'}</p>`}
   </div>
   <div class="grid g2c" style="margin-top:14px">
+    <div class="card"><div class="row between"><h2 style="margin:0">Collection</h2><span style="color:var(--mu);font-size:14px">${c.n} members, ${money(c.each)} each</span></div>
+      ${c.target ? meter(cpct, `${cpct.toFixed(0)}% of ${money(c.target)} collected`, c.toCollect ? money(c.toCollect) + ' to go' : 'Target reached', 100) : noT}</div>
+    <div class="card"><div class="row between"><h2 style="margin:0">Spending</h2>${big ? `<span style="color:var(--mu);font-size:14px">Biggest: ${esc(big.name)}, ${money(big.amount)}</span>` : ''}</div>
+      ${c.target ? meter(pct, `${pct.toFixed(0)}% of ${money(c.target)} spent`, pct > 100 ? 'Over by ' + money(c.total - c.target) : money(c.target - c.total) + ' left', 80) : noT}
+      <p class="hint" style="margin:10px 0 0">Average ${money(c.total / days)} per day with spending</p></div>
     <div class="card"><h2>Spending by day</h2>${dailyChart(c.ex)}</div>
     <div class="card"><h2>Spending by category</h2>${catRows.length ? catRows.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><div class="t"><i style="width:${v / cm * 100}%"></i></div><b>${money(v)}</b></div>`).join('') : emptyBox('No expenses yet', 'Spending will be grouped here.')}</div>
-    <div class="card"><h2>Contributed vs. share of costs</h2>
-      <div class="legend"><span><b></b>Contributed</span><span><b class="l"></b>Share of costs</span></div>
-      ${pr.length ? pr.map(r => `<div style="margin:12px 0"><div class="row between" style="font-size:14px"><span>${esc(r.p.name)}</span><span style="color:var(--mu)">${money(r.contrib)} in, ${money(r.share)} share</span></div>
-        <div class="hb" style="grid-template-columns:1fr;margin:5px 0 0;gap:4px"><div class="t"><i style="width:${r.contrib / pm * 100}%"></i></div><div class="t"><i class="l" style="width:${r.share / pm * 100}%"></i></div></div></div>`).join('') : emptyBox('No people yet', 'Add your team in the People tab.')}
+    <div class="card"><h2>Given vs target</h2>
+      ${pr.length ? pr.map(r => { const pc = c.each ? Math.min(100, r.given / c.each * 100) : 0; return `<div style="margin:12px 0"><div class="row between" style="font-size:14px"><span>${esc(r.p.name)}</span><span style="color:var(--mu)">${money(r.given)} of ${money(c.each)}</span></div>
+        <div class="hb" style="grid-template-columns:1fr;margin:5px 0 0"><div class="t"><i class="${pc >= 100 ? 'l' : ''}" style="width:${pc}%"></i></div></div></div>`; }).join('') : emptyBox('No people yet', ADMIN ? 'Add your members in the People tab.' : 'The admin has not added members yet.')}
     </div>
     <div class="card"><div class="row between"><h2>Latest changes</h2><button class="btn sm" data-act="tab" data-id="his">All history</button></div>
       ${recent.length ? recent.map(h => `<div style="padding:8px 0;border-top:1px solid var(--line)"><div style="font-size:14.5px">${esc(h.message)}</div><div class="foot" style="margin-top:2px">${fmtTime(h.ts)} by ${esc(h.who)}, commit ${h.hash}</div></div>`).join('') : emptyBox('No changes yet', 'Every add, edit and delete shows up here.')}
@@ -427,12 +420,12 @@ const emptyBox = (t, s) => `<div class="empty"><b>${t}</b>${s}</div>`;
 function filterExp() {
   let l = S.expenses.filter(e => F.del ? true : !e.deleted);
   const q = F.q.toLowerCase();
-  if (q) l = l.filter(e => [e.name, e.place, e.note, e.category, pname(e.paidBy)].join(' ').toLowerCase().includes(q));
+  if (q) l = l.filter(e => [e.name, e.place, e.note, e.category].join(' ').toLowerCase().includes(q));
   if (F.cat) l = l.filter(e => e.category === F.cat);
-  if (F.who) l = l.filter(e => e.paidBy === F.who);
   if (F.from) l = l.filter(e => e.date >= F.from);
   if (F.to) l = l.filter(e => e.date <= F.to);
-  const s = {'date-desc': (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt, 'date-asc': (a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
+  const k = e => e.date + (e.time || '');
+  const s = {'date-desc': (a, b) => k(b).localeCompare(k(a)), 'date-asc': (a, b) => k(a).localeCompare(k(b)),
     'amt-desc': (a, b) => b.amount - a.amount, 'amt-asc': (a, b) => a.amount - b.amount, 'added-desc': (a, b) => b.createdAt - a.createdAt}[F.sort];
   return l.sort(s);
 }
@@ -443,73 +436,70 @@ function expList() {
 }
 function expCard(e) {
   const dt = new Date(e.date + 'T00:00');
-  const sp = !e.splitAmong?.length ? 'everyone' : e.splitAmong.length > 3 ? e.splitAmong.length + ' people' : e.splitAmong.map(pname).join(', ');
   return `<article class="item ${e.deleted ? 'gone' : ''}">
     <div class="dt"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-GB', {month: 'short'})}</span></div>
-    <div><h3>${esc(e.name)}</h3><div class="chips"><span class="chip bl">${esc(e.category)}</span>${e.place ? `<span class="chip">at ${esc(e.place)}</span>` : ''}<span class="chip">paid by ${e.paidBy === 'fund' ? 'Common fund' : esc(pname(e.paidBy))}</span><span class="chip">split: ${esc(sp)}</span></div>
+    <div><h3>${esc(e.name)}</h3><div class="chips"><span class="chip bl">${esc(e.category)}</span>${e.place ? `<span class="chip">at ${esc(e.place)}</span>` : ''}${e.time ? `<span class="chip">${fmtClock(e.time)}</span>` : ''}</div>
       ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
-      <div class="foot">Spent on ${fmtDate(e.date)}. Added ${fmtTime(e.createdAt)}${e.updatedAt ? `, last edited ${fmtTime(e.updatedAt)}` : ''}${e.deleted ? '. Deleted' : ''}</div></div>
+      <div class="foot">Spent on ${fmtDate(e.date)}${e.time ? ' at ' + fmtClock(e.time) : ''}. Added ${fmtTime(e.createdAt)}${e.updatedAt ? `, last edited ${fmtTime(e.updatedAt)}` : ''}${e.deleted ? '. Deleted' : ''}</div></div>
     <div class="amt num ${e.deleted ? '' : 'l'}">${money(e.amount)}</div>
     <div class="acts"><button class="btn sm" data-act="ehist" data-id="${e.id}" data-t="expense">History</button>
       ${ADMIN ? (e.deleted ? `<button class="btn sm pri" data-act="restore" data-t="expense" data-id="${e.id}">Restore</button>` : `<button class="btn sm" data-act="edit-exp" data-id="${e.id}">Edit</button><button class="btn sm ghost" data-act="del" data-t="expense" data-id="${e.id}">Delete</button>`) : ''}</div></article>`;
 }
 function vExp() {
-  const ppl = act(S.people);
   return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">Expenses</h2>
     <div class="row"><button class="btn" data-act="csv">Export CSV</button>${ADMIN ? `<button class="btn pri" data-act="add-exp">Add expense</button>` : ''}</div></div>
   <div class="filters">
     <input type="search" placeholder="Search name, place, notes" data-g="F" data-f="q" value="${esc(F.q)}">
     <select data-g="F" data-f="cat"><option value="">All categories</option>${CATS.map(c => `<option ${F.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-    <select data-g="F" data-f="who"><option value="">Anyone paid</option><option value="fund" ${F.who === 'fund' ? 'selected' : ''}>Common fund</option>${ppl.map(p => `<option value="${p.id}" ${F.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <input type="date" title="From date" data-g="F" data-f="from" value="${F.from}"><input type="date" title="To date" data-g="F" data-f="to" value="${F.to}">
     <select data-g="F" data-f="sort">${[['date-desc', 'Newest spent'], ['date-asc', 'Oldest spent'], ['amt-desc', 'Highest amount'], ['amt-asc', 'Lowest amount'], ['added-desc', 'Recently added']].map(([v, l]) => `<option value="${v}" ${F.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     ${ADMIN ? `<label class="chk" style="margin:0"><input type="checkbox" data-g="F" data-f="del" ${F.del ? 'checked' : ''}>Show deleted</label>` : ''}
   </div><div id="list">${expList()}</div>`;
 }
 
-/* contributions */
+/* payments (shown in People tab) */
 function conList() {
   let l = S.contributions.filter(c => CF.del || !c.deleted);
   if (CF.who) l = l.filter(c => c.personId === CF.who);
   if (CF.q) l = l.filter(c => (c.note + pname(c.personId)).toLowerCase().includes(CF.q.toLowerCase()));
-  l.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
-  if (!l.length) return emptyBox('No contributions yet', ADMIN ? 'Record the first one with the button above.' : 'Nothing has been recorded yet.');
+  l.sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')) || b.createdAt - a.createdAt);
+  if (!l.length) return emptyBox('No payments yet', ADMIN ? 'Record the first one with the button above.' : 'Nothing has been recorded yet.');
   const tot = l.filter(c => !c.deleted).reduce((s, c) => s + +c.amount, 0);
-  return `<div class="sum"><b>${l.filter(c => !c.deleted).length}</b> contributions totalling <b>${money(tot)}</b></div>` + l.map(c => {
+  return `<div class="sum"><b>${l.filter(c => !c.deleted).length}</b> payments totalling <b>${money(tot)}</b></div>` + l.map(c => {
     const dt = new Date(c.date + 'T00:00');
     return `<article class="item ${c.deleted ? 'gone' : ''}"><div class="dt"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-GB', {month: 'short'})}</span></div>
       <div><h3>${esc(pname(c.personId))}</h3>${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}
-      <div class="foot">Received ${fmtDate(c.date)}. Added ${fmtTime(c.createdAt)}${c.updatedAt ? `, last edited ${fmtTime(c.updatedAt)}` : ''}${c.deleted ? '. Deleted' : ''}</div></div>
+      <div class="foot">Received ${fmtDate(c.date)}${c.time ? ' at ' + fmtClock(c.time) : ''}. Added ${fmtTime(c.createdAt)}${c.updatedAt ? `, last edited ${fmtTime(c.updatedAt)}` : ''}${c.deleted ? '. Deleted' : ''}</div></div>
       <div class="amt num l">${money(c.amount)}</div>
       <div class="acts"><button class="btn sm" data-act="ehist" data-t="contribution" data-id="${c.id}">History</button>
       ${ADMIN ? (c.deleted ? `<button class="btn sm pri" data-act="restore" data-t="contribution" data-id="${c.id}">Restore</button>` : `<button class="btn sm" data-act="edit-con" data-id="${c.id}">Edit</button><button class="btn sm ghost" data-act="del" data-t="contribution" data-id="${c.id}">Delete</button>`) : ''}</div></article>`;
   }).join('');
 }
-function vCon() {
-  const c = calc();
-  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">Contributions</h2>${ADMIN ? `<button class="btn pri" data-act="add-con">Add contribution</button>` : ''}</div>
-  <div class="grid g4" style="margin-bottom:16px">${Object.values(c.per).filter(r => !r.p.deleted).map(r => `<div class="card stat"><div class="lbl">${esc(r.p.name)}</div><div class="num">${money(r.contrib)}</div></div>`).join('')}</div>
+
+/* people */
+const sgn = b => (b < 0 ? '-' : b > 0 ? '+' : '') + money(Math.abs(b));
+function vPpl() {
+  const c = calc(), rows = Object.values(c.per).filter(r => !r.p.deleted);
+  const given = rows.reduce((s, r) => s + r.given, 0), tb = Math.round((given - c.target) * 100) / 100;
+  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">People</h2>${ADMIN ? `<button class="btn pri" data-act="add-ppl">Add person</button>` : ''}</div>
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="card stat"><div class="lbl">Members</div><div class="num">${c.n}</div></div>
+    <div class="card stat"><div class="lbl">Target budget</div><div class="num">${money(c.target)}</div></div>
+    <div class="card stat bl"><div class="lbl">Target per person</div><div class="num">${money(c.each)}</div></div>
+    <div class="card stat hl"><div class="lbl">Still to collect</div><div class="num">${money(c.toCollect)}</div></div>
+  </div>
+  ${rows.length ? `<div class="card" style="padding:0"><div class="tw"><table class="tbl"><thead><tr><th>Name</th><th>Given</th><th>Target</th><th>Balance</th>${ADMIN ? '<th></th>' : ''}</tr></thead><tbody>
+    ${rows.map(r => { const b = Math.round((r.given - c.each) * 100) / 100, pc = c.each ? Math.min(100, r.given / c.each * 100) : 0;
+      return `<tr><td><b>${esc(r.p.name)}</b><div class="mb"><i class="${b >= 0 ? 'l' : ''}" style="width:${pc}%"></i></div></td><td>${money(r.given)}</td><td>${money(c.each)}</td>
+      <td class="net ${b > 0 ? 'pos' : b < 0 ? 'neg' : ''}">${sgn(b)}<small>${b < 0 ? 'still to give' : b > 0 ? 'extra given' : 'paid up'}</small></td>
+      ${ADMIN ? `<td class="ta"><button class="btn sm pri" data-act="add-con" data-pid="${r.p.id}">Add payment</button> <button class="btn sm" data-act="edit-ppl" data-id="${r.p.id}">Rename</button> <button class="btn sm" data-act="ehist" data-t="person" data-id="${r.p.id}">History</button> <button class="btn sm ghost" data-act="del" data-t="person" data-id="${r.p.id}">Remove</button></td>` : ''}</tr>`; }).join('')}
+    </tbody><tfoot><tr><td>Total</td><td>${money(given)}</td><td>${money(c.target)}</td><td class="net ${tb > 0 ? 'pos' : tb < 0 ? 'neg' : ''}">${sgn(tb)}</td>${ADMIN ? '<td></td>' : ''}</tr></tfoot></table></div></div>`
+  : emptyBox('No people yet', ADMIN ? 'Add everyone on the trip, with the amount each has given so far.' : 'The admin has not added anyone yet.')}
+  <div class="row between" style="margin:28px 0 12px"><h2 style="font-size:20px">Payments received</h2>${ADMIN ? `<button class="btn pri" data-act="add-con">Add payment</button>` : ''}</div>
   <div class="filters"><input type="search" placeholder="Search person or note" data-g="CF" data-f="q" value="${esc(CF.q)}">
     <select data-g="CF" data-f="who"><option value="">Everyone</option>${act(S.people).map(p => `<option value="${p.id}" ${CF.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     ${ADMIN ? `<label class="chk" style="margin:0"><input type="checkbox" data-g="CF" data-f="del" ${CF.del ? 'checked' : ''}>Show deleted</label>` : ''}</div>
   <div id="list">${conList()}</div>`;
-}
-
-/* people */
-function vPpl() {
-  const c = calc(), rows = Object.values(c.per).filter(r => !r.p.deleted), pay = settle(c);
-  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">People and balances</h2>${ADMIN ? `<button class="btn pri" data-act="add-ppl">Add person</button>` : ''}</div>
-  <div class="grid g2c">
-    <div class="card"><h2>Each person</h2>${rows.length ? rows.map(r => {
-      const n = Math.round(r.net * 100) / 100;
-      return `<div class="person"><div><h3>${esc(r.p.name)}</h3><div class="mini"><span>Contributed <b>${money(r.contrib)}</b></span><span>Paid personally <b>${money(r.paid)}</b></span><span>Share of costs <b>${money(r.share)}</b></span></div>
-        ${ADMIN ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-act="edit-ppl" data-id="${r.p.id}">Rename</button><button class="btn sm ghost" data-act="del" data-t="person" data-id="${r.p.id}">Remove</button><button class="btn sm" data-act="ehist" data-t="person" data-id="${r.p.id}">History</button></div>` : ''}</div>
-        <div class="net ${n > 0 ? 'pos' : n < 0 ? 'neg' : ''}">${money(Math.abs(n))}<small>${n > 0 ? 'gets back' : n < 0 ? 'still owes' : 'settled'}</small></div></div>`;
-    }).join('') : emptyBox('No people yet', ADMIN ? 'Add everyone on the trip first.' : 'The admin has not added anyone yet.')}</div>
-    <div class="card"><h2>Settle up</h2><p class="hint">Fewest payments to clear every balance. The common fund counts as a payer or receiver.</p>
-      ${pay.length ? pay.map(p => `<div class="pay"><span>${esc(p.from)} pays ${esc(p.to)}</span><span class="a">${money(p.amt)}</span></div>`).join('') : emptyBox('All settled', 'Nobody owes anything right now.')}
-      <p class="hint" style="margin-top:14px">Net = contributed + paid personally - share of costs. Common fund left: <b>${money(c.fund)}</b>.</p></div>
-  </div>`;
 }
 
 /* history */
@@ -537,23 +527,24 @@ function vHis() {
   <div id="list">${hisList()}</div>`;
 }
 
-/* settings */
+/* trip management */
 function vSet() {
-  const s = S.settings;
-  return `<h2 style="font-size:24px;margin-bottom:14px">Settings</h2><div class="setgrid">
-  <div class="card"><h2>Trip</h2><form data-form="settings">
-    <label>Trip name<input name="trip" required value="${esc(s.trip)}"></label>
-    <div class="g2"><label>Total budget<input name="budget" type="number" min="0" step="0.01" value="${+s.budget || ''}" placeholder="0 for none"></label>
-    <label>Currency symbol<input name="cur" required maxlength="4" value="${esc(s.cur)}"></label></div>
-    <label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>
-    <button class="btn pri">Save settings</button></form></div>
-  <div class="card"><h2>Admin password</h2><form data-form="password"><div class="err" id="perr"></div>
+  const s = S.settings, c = calc(), ro = ADMIN ? '' : 'disabled';
+  return `<h2 style="font-size:24px;margin-bottom:14px">Trip management</h2><div class="setgrid">
+  <div class="card"><h2>Trip details</h2><form data-form="settings">
+    <label>Trip name<input name="trip" required value="${esc(s.trip)}" ${ro}></label>
+    <label>Destination<input name="destination" value="${esc(s.destination)}" placeholder="Sylhet" ${ro}></label>
+    <div class="g2"><label>Start date<input name="start" type="date" value="${esc(s.start)}" ${ro}></label><label>End date<input name="end" type="date" value="${esc(s.end)}" ${ro}></label></div>
+    <label>Target budget (total to collect)<input name="budget" type="number" min="0" step="0.01" value="${+s.budget || ''}" placeholder="5000" ${ro}></label>
+    <p class="hint">${c.n} members, so each gives ${money(c.each)}. Everyone is calculated equally.</p>
+    ${ADMIN ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label><button class="btn pri">Save trip</button>` : ''}</form></div>
+  ${ADMIN ? `<div class="card"><h2>Admin password</h2><form data-form="password"><div class="err" id="perr"></div>
     <label>Current password<input name="cur" type="password" required autocomplete="current-password"></label>
     <label>New password (6+ characters)<input name="nw" type="password" minlength="6" required autocomplete="new-password"></label>
     <button class="btn blue">Change password</button></form></div>
   <div class="card"><h2>Backup</h2><p class="hint">Download everything as a JSON file, or restore from one. Restoring adds or overwrites records with the same id.</p>
     <div class="row"><button class="btn" data-act="backup">Download backup</button><button class="btn" data-act="restorefile">Restore from file</button></div>
-    <input type="file" id="rf" accept=".json" hidden></div></div>`;
+    <input type="file" id="rf" accept=".json" hidden></div>` : ''}</div>`;
 }
 
 /* ---------- dialogs & forms ---------- */
@@ -564,34 +555,33 @@ const opt = (v, cur, l) => `<option value="${esc(v)}" ${v === cur ? 'selected' :
 const btnRow = `<div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Save</button></div>`;
 
 function expForm(id) {
-  const e = id ? S.expenses.find(x => x.id === id) : null, ppl = act(S.people);
-  if (!ppl.length && !e) { toast('Add people first in the People tab'); return; }
-  const sp = e?.splitAmong || [];
+  const e = id ? S.expenses.find(x => x.id === id) : null;
   openDlg(`<form data-form="expense" data-id="${id || ''}"><h3>${e ? 'Edit expense' : 'Add expense'}</h3>
     <label>Name<input name="name" required value="${esc(e?.name)}" placeholder="Lunch at the beach"></label>
     <div class="g2"><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${e?.amount ?? ''}"></label>
-    <label>Track date<input name="date" type="date" required value="${e?.date || today()}"></label></div>
-    <div class="g2"><label>Category<select name="category">${CATS.map(c => opt(c, e?.category)).join('')}</select></label>
-    <label>Paid by<select name="paidBy">${opt('fund', e?.paidBy, 'Common fund')}${ppl.map(p => opt(p.id, e?.paidBy, p.name)).join('')}</select></label></div>
+    <label>Category<select name="category">${CATS.map(c => opt(c, e?.category)).join('')}</select></label></div>
+    <div class="g2"><label>Track date<input name="date" type="date" required value="${e?.date || today()}"></label>
+    <label>Time<input name="time" type="time" required value="${e?.time || nowT()}"></label></div>
     <label>Where it was spent<input name="place" value="${esc(e?.place)}" placeholder="Cox's Bazar"></label>
-    <fieldset><legend>Split among (leave all unticked for everyone)</legend>${ppl.map(p => `<label class="chk"><input type="checkbox" name="split" value="${p.id}" ${sp.includes(p.id) ? 'checked' : ''}>${esc(p.name)}</label>`).join('')}</fieldset>
     <label>Notes<textarea name="note" rows="2">${esc(e?.note)}</textarea></label>
     ${e ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
 }
-function conForm(id) {
+function conForm(id, pid) {
   const c = id ? S.contributions.find(x => x.id === id) : null, ppl = act(S.people);
-  if (!ppl.length && !c) { toast('Add people first in the People tab'); return; }
-  openDlg(`<form data-form="contribution" data-id="${id || ''}"><h3>${c ? 'Edit contribution' : 'Add contribution'}</h3>
-    <label>Person<select name="personId">${ppl.map(p => opt(p.id, c?.personId, p.name)).join('')}</select></label>
-    <div class="g2"><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${c?.amount ?? ''}"></label>
-    <label>Date received<input name="date" type="date" required value="${c?.date || today()}"></label></div>
+  if (!ppl.length && !c) { toast('Add people first'); return; }
+  openDlg(`<form data-form="contribution" data-id="${id || ''}"><h3>${c ? 'Edit payment' : 'Add payment'}</h3>
+    <label>Person<select name="personId">${ppl.map(p => opt(p.id, c?.personId || pid, p.name)).join('')}</select></label>
+    <label>Amount given<input name="amount" type="number" step="0.01" min="0.01" required value="${c?.amount ?? ''}"></label>
+    <div class="g2"><label>Date<input name="date" type="date" required value="${c?.date || today()}"></label>
+    <label>Time<input name="time" type="time" required value="${c?.time || nowT()}"></label></div>
     <label>Notes<textarea name="note" rows="2">${esc(c?.note)}</textarea></label>
     ${c ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
 }
 function pplForm(id) {
   const p = id ? S.people.find(x => x.id === id) : null;
   openDlg(`<form data-form="person" data-id="${id || ''}"><h3>${p ? 'Rename person' : 'Add person'}</h3>
-    <label>Name<input name="name" required value="${esc(p?.name)}"></label>${btnRow}</form>`);
+    <label>Name<input name="name" required value="${esc(p?.name)}"></label>
+    ${p ? '' : `<label>Amount given so far (optional)<input name="given" type="number" min="0" step="0.01" placeholder="0"></label>`}${btnRow}</form>`);
 }
 function loginForm() {
   openDlg(`<form data-form="login"><h3>Admin sign in</h3><div class="err" id="lerr"></div>
@@ -620,27 +610,31 @@ function onSubmit(ev) {
   }
   if (kind === 'expense') {
     const old = id ? S.expenses.find(x => x.id === id) : null;
-    const after = {id: id || uid(), name: v('name'), amount: +v('amount'), date: v('date'), category: v('category'), place: v('place'), paidBy: v('paidBy'),
-      splitAmong: fd.getAll('split'), note: v('note'), createdAt: old?.createdAt || now, createdBy: old?.createdBy || 'admin', updatedAt: old ? now : null, deleted: false};
+    const after = {id: id || uid(), name: v('name'), amount: +v('amount'), date: v('date'), time: v('time'), category: v('category'), place: v('place'),
+      note: v('note'), createdAt: old?.createdAt || now, createdBy: old?.createdBy || 'admin', updatedAt: old ? now : null, deleted: false};
     if (commitChange('expense', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Expense updated' : 'Expense added'); }
   } else if (kind === 'contribution') {
     const old = id ? S.contributions.find(x => x.id === id) : null;
-    const after = {id: id || uid(), personId: v('personId'), amount: +v('amount'), date: v('date'), note: v('note'), createdAt: old?.createdAt || now, createdBy: 'admin', updatedAt: old ? now : null, deleted: false};
-    if (commitChange('contribution', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Contribution updated' : 'Contribution added'); }
+    const after = {id: id || uid(), personId: v('personId'), amount: +v('amount'), date: v('date'), time: v('time'), note: v('note'), createdAt: old?.createdAt || now, createdBy: 'admin', updatedAt: old ? now : null, deleted: false};
+    if (commitChange('contribution', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Payment updated' : 'Payment added'); }
   } else if (kind === 'person') {
     const old = id ? S.people.find(x => x.id === id) : null;
     const after = {id: id || uid(), name: v('name'), createdAt: old?.createdAt || now, updatedAt: old ? now : null, deleted: false};
-    if (commitChange('person', old, after, '', old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Person renamed' : 'Person added'); }
+    if (commitChange('person', old, after, '', old ? 'update' : 'create')) {
+      const g = +v('given');
+      if (!old && g > 0) commitChange('contribution', null, {id: uid(), personId: after.id, amount: g, date: today(), time: nowT(), note: 'Amount given at start', createdAt: now, createdBy: 'admin', updatedAt: null, deleted: false}, '', 'create');
+      dlg.close(); toast(old ? 'Person renamed' : 'Person added');
+    }
   } else if (kind === 'settings') {
-    const old = current('settings'), after = {id: 'settings', trip: v('trip'), budget: +v('budget') || 0, cur: v('cur')};
-    if (commitChange('settings', old, after, v('reason'), 'update')) toast('Settings saved');
+    const old = current('settings'), after = {id: 'settings', trip: v('trip'), destination: v('destination'), start: v('start'), end: v('end'), budget: +v('budget') || 0};
+    if (commitChange('settings', old, after, v('reason'), 'update')) toast('Trip saved');
   }
 }
 
 /* ---------- actions ---------- */
 function csv() {
-  const rows = [['Name', 'Amount', 'Track date', 'Category', 'Where spent', 'Paid by', 'Split among', 'Notes', 'Added at', 'Last edited']];
-  filterExp().filter(e => !e.deleted).forEach(e => rows.push([e.name, e.amount, e.date, e.category, e.place, fmtVal('paidBy', e.paidBy), fmtVal('splitAmong', e.splitAmong), e.note, fmtTime(e.createdAt), e.updatedAt ? fmtTime(e.updatedAt) : '']));
+  const rows = [['Name', 'Amount', 'Track date', 'Time', 'Category', 'Where spent', 'Notes', 'Added at', 'Last edited']];
+  filterExp().filter(e => !e.deleted).forEach(e => rows.push([e.name, e.amount, e.date, fmtClock(e.time), e.category, e.place, e.note, fmtTime(e.createdAt), e.updatedAt ? fmtTime(e.updatedAt) : '']));
   const t = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   download('expenses.csv', '\ufeff' + t, 'text/csv');
 }
@@ -662,7 +656,7 @@ function revert(hid) {
   if (commitChange(h.type, cur, target, 'undo ' + h.hash, 'revert')) toast('Change undone');
 }
 function backup() {
-  const {settings, ...rest} = S; download('trip-backup.json', JSON.stringify({...rest, settings: {trip: settings.trip, budget: settings.budget, cur: settings.cur}}, null, 2), 'application/json');
+  const {settings, ...rest} = S; download('trip-backup.json', JSON.stringify({...rest, settings: {trip: settings.trip, destination: settings.destination, start: settings.start, end: settings.end, budget: settings.budget}}, null, 2), 'application/json');
 }
 function restoreFile(file) {
   const r = new FileReader();
@@ -688,7 +682,7 @@ document.addEventListener('click', ev => {
   else if (a === 'print') window.print();
   else if (a === 'add-exp') expForm();
   else if (a === 'edit-exp') expForm(id);
-  else if (a === 'add-con') conForm();
+  else if (a === 'add-con') conForm(null, t.dataset.pid);
   else if (a === 'edit-con') conForm(id);
   else if (a === 'add-ppl') pplForm();
   else if (a === 'edit-ppl') pplForm(id);
@@ -704,7 +698,7 @@ const onFilter = ev => {
   const t = ev.target, g = G[t.dataset.g]; if (!g) return;
   g[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
   const l = $('#list'); if (!l) return;
-  l.innerHTML = {exp: expList, con: conList, his: hisList}[tab]();
+  l.innerHTML = {exp: expList, ppl: conList, his: hisList}[tab]();
 };
 document.addEventListener('input', onFilter);
 document.addEventListener('change', ev => {
