@@ -195,7 +195,7 @@ const fmtTime = ts => new Date(ts).toLocaleString('en-GB', {day:'numeric', month
 const fmtDate = d => new Date(d + 'T00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
 const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, '0').slice(0, 7); };
 const clean = o => JSON.parse(JSON.stringify(o));
-const ADMIN_EMAIL = 'admin@trip.app';
+const ADMIN_EMAILS = ['laltai@parves.com', 'khaled@fima.com'];
 const CATS = ['Food', 'Transport', 'Stay', 'Tickets', 'Shopping', 'Fuel', 'Medical', 'Other'];
 
 const DEF = () => ({people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', budget: 0, cur: '৳'}});
@@ -254,7 +254,7 @@ async function fbBackend() {
       ['people', 'expenses', 'contributions', 'history'].forEach(c =>
         Fs.onSnapshot(Fs.collection(db, c), s => { st[c] = s.docs.map(d => ({...d.data(), id: d.id})); cb(st); }));
       Fs.onSnapshot(Fs.doc(db, 'meta', 'settings'), s => { if (s.exists()) st.settings = {...DEF().settings, ...s.data()}; cb(st); });
-      A.onAuthStateChanged(auth, u => { ADMIN = !!u && u.email === ADMIN_EMAIL; cb(st); });
+      A.onAuthStateChanged(auth, u => { ADMIN = !!u && ADMIN_EMAILS.includes(u.email); cb(st); });
     },
     async commit(ops) {
       for (let i = 0; i < ops.length; i += 400) {
@@ -267,7 +267,7 @@ async function fbBackend() {
         await b.commit();
       }
     },
-    login: (u, p) => A.signInWithEmailAndPassword(auth, u.trim().toLowerCase() + '@trip.app', p),
+    login: (u, p) => A.signInWithEmailAndPassword(auth, u.trim().toLowerCase().includes('@') ? u.trim().toLowerCase() : u.trim().toLowerCase() + '@trip.app', p),
     logout: () => A.signOut(auth),
     async changePassword(cur, nw) {
       const u = auth.currentUser;
@@ -595,7 +595,7 @@ function pplForm(id) {
 }
 function loginForm() {
   openDlg(`<form data-form="login"><h3>Admin sign in</h3><div class="err" id="lerr"></div>
-    <label>Username<input name="u" required autocomplete="username" value="admin"></label>
+    <label>Email or username<input name="u" required autocomplete="username" placeholder="Admin email"></label>
     <label>Password<input name="p" type="password" required autocomplete="current-password"></label>
     <div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Sign in</button></div></form>`);
 }
