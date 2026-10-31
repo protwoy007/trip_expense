@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#030407">
+<title>Trip Ledger</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#030407;--blue:#155BC9;--lime:#D4FF24;--card:#090c14;--card2:#0d1220;--line:#18203a;--tx:#eef1f8;--mu:#8590aa;--blue-soft:rgba(21,91,201,.18);--lime-soft:rgba(212,255,36,.12)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font:15px/1.5 'Hanken Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+h1,h2,h3,.num{font-family:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif;letter-spacing:-.02em;font-weight:700}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--lime)}
+:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.wrap{max-width:1060px;margin:0 auto;padding:0 18px}
+header{padding:26px 0 14px;display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.trip{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:clamp(26px,5vw,40px);line-height:1.05;letter-spacing:-.03em}
+.sub{color:var(--mu);font-size:14px;margin-top:4px}
+.hr{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--mu);display:inline-flex;gap:7px;align-items:center}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--lime);display:inline-block}
+.pill.off i{background:var(--mu)}
+nav{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:22px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{background:none;border:0;padding:12px 14px;color:var(--mu);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-1px;font-weight:500}
+nav button:hover{color:var(--tx)}
+nav button.on{color:var(--tx);border-bottom-color:var(--lime)}
+.btn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--mu)}
+.btn.pri{background:var(--lime);color:var(--bg);border-color:var(--lime)}
+.btn.pri:hover{filter:brightness(.92)}
+.btn.blue{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.sm{padding:5px 11px;font-size:13px;border-radius:8px}
+.btn.ghost{color:var(--mu)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row.end{justify-content:flex-end}
+.row.between{justify-content:space-between}
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.g2c{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+.card h2{font-size:18px;margin-bottom:12px}
+.stat .lbl{color:var(--mu);font-size:13px}
+.stat .num{font-size:clamp(24px,4vw,32px);margin-top:2px;line-height:1.15}
+.stat.hl{background:var(--lime);border-color:var(--lime);color:var(--bg)}
+.stat.hl .lbl{color:rgba(3,4,7,.65)}
+.stat.bl{background:var(--blue);border-color:var(--blue)}
+.stat.bl .lbl{color:rgba(255,255,255,.75)}
+.meter{margin-top:6px}
+.meter .track{height:26px;border-radius:7px;background:var(--card2);border:1px solid var(--line);position:relative;overflow:hidden;background-image:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),var(--line) calc(10% - 1px) 10%)}
+.meter .fill{position:absolute;inset:0 auto 0 0;background:var(--blue);transition:width .5s}
+.meter.warn .fill{background:var(--lime)}
+.meter .cap{display:flex;justify-content:space-between;color:var(--mu);font-size:13px;margin-top:8px;gap:10px;flex-wrap:wrap}
+.bars{display:flex;align-items:flex-end;gap:5px;height:170px;overflow-x:auto;padding-bottom:2px}
+.bar{flex:1 0 20px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:20px}
+.bar i{display:block;width:100%;background:var(--blue);border-radius:5px 5px 2px 2px;min-height:2px}
+.bar.mx i{background:var(--lime)}
+.bar span{font-size:11px;color:var(--mu)}
+.hb{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;margin:9px 0;font-size:14px}
+.hb .t{height:12px;background:var(--card2);border-radius:6px;overflow:hidden;display:flex}
+.hb .t i{display:block;height:100%;background:var(--blue)}
+.hb .t i.l{background:var(--lime)}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--mu);margin-bottom:6px}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:var(--blue)}
+.legend b.l{background:var(--lime)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filters input,.filters select{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 11px;min-width:0}
+.filters input[type=search]{flex:1 1 200px}
+.sum{color:var(--mu);margin-bottom:12px;font-size:14px}
+.sum b{color:var(--tx)}
+.item{display:grid;grid-template-columns:54px 1fr auto;gap:6px 14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;align-items:start}
+.item.gone{opacity:.5}
+.item.gone h3{text-decoration:line-through}
+.dt{background:var(--card2);border-radius:12px;text-align:center;padding:7px 0;line-height:1.1}
+.dt b{font-family:'Bricolage Grotesque',sans-serif;font-size:21px;display:block}
+.dt span{font-size:12px;color:var(--mu)}
+.item h3{font-size:17px;margin-bottom:5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;font-size:12.5px;padding:2px 10px;color:#c5cce0}
+.chip.bl{background:var(--blue-soft);border-color:transparent;color:#a9c6ff}
+.note{margin-top:8px;color:#c5cce0;font-size:14px;white-space:pre-wrap}
+.foot{margin-top:8px;color:var(--mu);font-size:12.5px}
+.amt{font-size:21px;text-align:right;white-space:nowrap}
+.amt.l{color:var(--lime)}
+.acts{grid-column:2/4;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:560px){.item{grid-template-columns:48px 1fr}.amt{grid-column:2;text-align:left}.acts{grid-column:1/3;justify-content:flex-start}}
+.person{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.person:first-child{border-top:0}
+.person h3{font-size:17px}
+.mini{display:flex;gap:18px;flex-wrap:wrap;color:var(--mu);font-size:13.5px;margin-top:4px}
+.mini b{color:var(--tx);font-weight:500}
+.net{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:20px;text-align:right}
+.net small{display:block;font-family:'Hanken Grotesk',sans-serif;font-weight:400;font-size:12.5px;color:var(--mu)}
+.net.pos{color:var(--lime)}
+.net.neg{color:#8fb4ff}
+.pay{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.pay:first-of-type{border-top:0}
+.pay .a{margin-left:auto;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:18px;color:var(--lime)}
+.log{position:relative;padding-left:30px}
+.log::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.commit{position:relative;margin-bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
+.commit::before{content:"";position:absolute;left:-28px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:3px solid var(--blue)}
+.commit.create::before{border-color:var(--lime)}
+.commit.delete::before{background:var(--blue);border-color:var(--blue)}
+.commit.revert::before,.commit.restore::before{border-color:var(--lime);background:var(--lime)}
+.commit code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:var(--blue-soft);color:#a9c6ff;border-radius:6px;padding:2px 7px}
+.tag{font-size:12.5px;border-radius:999px;padding:1px 9px;border:1px solid var(--line);color:var(--mu)}
+.tag.create,.tag.restore,.tag.revert{border-color:var(--lime);color:var(--lime)}
+.tag.update{border-color:var(--blue);color:#8fb4ff}
+.tag.delete{background:var(--blue);border-color:var(--blue);color:#fff}
+.commit .msg{margin:7px 0 4px;font-weight:500}
+.diff{font-size:13.5px;color:#c5cce0;margin-top:3px}
+.diff s{color:var(--mu)}
+.diff b{color:var(--lime);font-weight:500}
+.empty{border:1px dashed var(--line);border-radius:16px;padding:30px 18px;text-align:center;color:var(--mu)}
+.empty b{display:block;color:var(--tx);font-size:17px;margin-bottom:4px;font-family:'Bricolage Grotesque',sans-serif}
+.banner{background:var(--lime-soft);border:1px solid rgba(212,255,36,.35);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+dialog{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:20px;padding:22px;width:min(520px,calc(100vw - 24px));max-height:92vh;overflow:auto;margin:auto}
+dialog.wide{width:min(680px,calc(100vw - 24px))}
+dialog::backdrop{background:rgba(3,4,7,.8);backdrop-filter:blur(3px)}
+dialog h3{font-size:21px;margin-bottom:14px}
+form label{display:block;font-size:13.5px;color:var(--mu);margin-bottom:12px}
+form input:not([type=checkbox]),form select,form textarea{display:block;width:100%;margin-top:5px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--tx)}
+form input:focus,form select:focus,form textarea:focus{border-color:var(--blue);outline:none}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.g2{grid-template-columns:1fr}}
+fieldset{border:1px solid var(--line);border-radius:12px;padding:10px 12px 4px;margin-bottom:12px}
+legend{font-size:13.5px;color:var(--mu);padding:0 6px}
+label.chk{display:inline-flex;align-items:center;gap:7px;margin:0 14px 8px 0;color:var(--tx);font-size:14.5px}
+label.chk input{accent-color:var(--lime);width:16px;height:16px}
+.err{color:var(--lime);font-size:13.5px;min-height:20px;margin-bottom:6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(30px);background:var(--lime);color:var(--bg);font-weight:700;padding:10px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.setgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.hint{color:var(--mu);font-size:13.5px;margin-bottom:12px}
+footer{color:var(--mu);font-size:13px;text-align:center;padding:30px 0 40px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media print{
+  body{background:#fff;color:#000}header .hr,nav,.acts,.filters,.btn,footer,#toast{display:none!important}
+  .card,.item,.commit{background:#fff;border-color:#ccc;color:#000;break-inside:avoid}
+  .chip,.dt{background:#eee;color:#000;border-color:#ccc}.sub,.foot,.mini,.sum,.note{color:#444}
+  .amt.l,.stat.hl .num,.diff b,.net.pos,.pay .a{color:#000}.stat.hl,.stat.bl{background:#fff;color:#000;border-color:#ccc}
+}
+</style>
+</head>
+<body>
+<script>
+/* Paste your Firebase web config here (see README.md). Leave null for demo mode. */
+window.FIREBASE_CONFIG = null;
+/* Example:
+window.FIREBASE_CONFIG = {
+  apiKey: "...", authDomain: "...firebaseapp.com", projectId: "...",
+  storageBucket: "...", messagingSenderId: "...", appId: "..."
+};
+*/
+</script>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="trip" id="tripName">Trip Ledger</div>
+      <div class="sub">Shared trip expenses</div>
+    </div>
+    <div class="hr" id="hdr"></div>
+  </header>
+  <nav id="nav"></nav>
+  <main id="app"></main>
+  <footer id="foot"></footer>
+</div>
+<dialog id="dlg"></dialog>
+<div id="toast"></div>
+
+<script type="module">
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const today = () => ymd(new Date());
+const fmtTime = ts => new Date(ts).toLocaleString('en-GB', {day:'numeric', month:'short', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true});
+const fmtDate = d => new Date(d + 'T00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, '0').slice(0, 7); };
+const clean = o => JSON.parse(JSON.stringify(o));
+const ADMIN_EMAIL = 'admin@trip.app';
+const CATS = ['Food', 'Transport', 'Stay', 'Tickets', 'Shopping', 'Fuel', 'Medical', 'Other'];
+
+const DEF = () => ({people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', budget: 0, cur: '৳'}});
+let S = DEF(), ADMIN = false, B = null, tab = 'dash';
+const F = {q: '', cat: '', who: '', from: '', to: '', sort: 'date-desc', del: false};
+const CF = {who: '', q: '', del: false};
+const HF = {q: '', type: '', action: ''};
+const G = {F, CF, HF};
+
+const money = n => S.settings.cur + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+const act = a => a.filter(x => !x.deleted);
+const pname = id => S.people.find(p => p.id === id)?.name || 'Unknown';
+const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2400); };
+
+/* ---------- backends ---------- */
+function localBackend() {
+  const K = 'trip-ledger-v1';
+  let data = JSON.parse(localStorage.getItem(K) || 'null') || {...DEF(), settings: {...DEF().settings, user: 'admin', pass: 'admin123'}};
+  let cb;
+  const emit = () => { localStorage.setItem(K, JSON.stringify(data)); cb(data); };
+  return {
+    mode: 'local',
+    init(c) { cb = c; ADMIN = sessionStorage.getItem('tl-admin') === '1'; cb(data); },
+    commit(ops) {
+      ops.forEach(o => {
+        if (o.c === 'meta') { data.settings = {...data.settings, ...o.data}; return; }
+        const a = data[o.c], i = a.findIndex(x => x.id === o.id);
+        if (o.del) { if (i > -1) a.splice(i, 1); }
+        else if (i > -1) a[i] = {...o.data, id: o.id};
+        else a.push({...o.data, id: o.id});
+      });
+      emit(); return Promise.resolve();
+    },
+    async login(u, p) {
+      if (u.trim().toLowerCase() === data.settings.user && p === data.settings.pass) { ADMIN = true; sessionStorage.setItem('tl-admin', '1'); cb(data); }
+      else throw new Error('bad');
+    },
+    async logout() { ADMIN = false; sessionStorage.removeItem('tl-admin'); cb(data); },
+    async changePassword(cur, nw) {
+      if (cur !== data.settings.pass) throw new Error('bad');
+      data.settings.pass = nw; emit();
+    }
+  };
+}
+
+async function fbBackend() {
+  const base = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const [{initializeApp}, A, Fs] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  const app = initializeApp(window.FIREBASE_CONFIG);
+  const auth = A.getAuth(app);
+  const db = Fs.initializeFirestore(app, {localCache: Fs.persistentLocalCache({tabManager: Fs.persistentMultipleTabManager()})});
+  const st = DEF();
+  return {
+    mode: 'firebase',
+    init(cb) {
+      ['people', 'expenses', 'contributions', 'history'].forEach(c =>
+        Fs.onSnapshot(Fs.collection(db, c), s => { st[c] = s.docs.map(d => ({...d.data(), id: d.id})); cb(st); }));
+      Fs.onSnapshot(Fs.doc(db, 'meta', 'settings'), s => { if (s.exists()) st.settings = {...DEF().settings, ...s.data()}; cb(st); });
+      A.onAuthStateChanged(auth, u => { ADMIN = !!u && u.email === ADMIN_EMAIL; cb(st); });
+    },
+    async commit(ops) {
+      for (let i = 0; i < ops.length; i += 400) {
+        const b = Fs.writeBatch(db);
+        ops.slice(i, i + 400).forEach(o => {
+          const r = Fs.doc(db, o.c, o.id);
+          if (o.del) b.delete(r);
+          else { const {id, ...d} = clean(o.data); b.set(r, d, {merge: o.c === 'meta'}); }
+        });
+        await b.commit();
+      }
+    },
+    login: (u, p) => A.signInWithEmailAndPassword(auth, u.trim().toLowerCase() + '@trip.app', p),
+    logout: () => A.signOut(auth),
+    async changePassword(cur, nw) {
+      const u = auth.currentUser;
+      await A.reauthenticateWithCredential(u, A.EmailAuthProvider.credential(u.email, cur));
+      await A.updatePassword(u, nw);
+    }
+  };
+}
+
+/* ---------- change tracking (git-like) ---------- */
+const COLL = {expense: 'expenses', contribution: 'contributions', person: 'people', settings: 'meta'};
+const FIELDS = {
+  expense: [['name','Name'],['amount','Amount'],['date','Track date'],['category','Category'],['place','Place'],['paidBy','Paid by'],['splitAmong','Split among'],['note','Notes'],['deleted','Deleted']],
+  contribution: [['personId','Person'],['amount','Amount'],['date','Date'],['note','Notes'],['deleted','Deleted']],
+  person: [['name','Name'],['deleted','Deleted']],
+  settings: [['trip','Trip name'],['budget','Budget'],['cur','Currency symbol']]
+};
+function fmtVal(f, v) {
+  if (f === 'amount' || f === 'budget') return money(v);
+  if (f === 'paidBy') return v === 'fund' ? 'Common fund' : pname(v);
+  if (f === 'personId') return pname(v);
+  if (f === 'splitAmong') return !v || !v.length ? 'Everyone' : v.map(pname).join(', ');
+  if (f === 'deleted') return v ? 'yes' : 'no';
+  if (f === 'date') return v ? fmtDate(v) : '-';
+  return v === '' || v == null ? '-' : String(v);
+}
+function entName(type, o) {
+  if (type === 'contribution') return pname(o.personId) + ' ' + money(o.amount);
+  if (type === 'settings') return 'Trip settings';
+  return o.name;
+}
+function current(type, id) {
+  if (type === 'settings') { const s = S.settings; return {id: 'settings', trip: s.trip, budget: s.budget, cur: s.cur}; }
+  return S[COLL[type]].find(x => x.id === id);
+}
+function commitChange(type, before, after, reason, action) {
+  const changes = [];
+  FIELDS[type].forEach(([f, l]) => {
+    const a = before ? before[f] : undefined, b = after[f];
+    if (JSON.stringify(a ?? '') !== JSON.stringify(b ?? '')) changes.push({field: f, label: l, from: before ? fmtVal(f, a) : null, to: fmtVal(f, b)});
+  });
+  if (before && !changes.length) { toast('Nothing changed'); return false; }
+  const nm = type === 'contribution' ? pname(after.personId) : entName(type, after), label = type === 'settings' ? 'settings' : type;
+  const verb = {create: 'Added', update: 'Updated', delete: 'Deleted', restore: 'Restored', revert: 'Reverted'}[action];
+  let message = `${verb} ${label} "${nm}"`;
+  if (action === 'create' && (type === 'expense' || type === 'contribution')) message += ` ${type === 'expense' ? 'for' : 'of'} ${money(after.amount)}`;
+  if ((action === 'update' || action === 'revert') && changes.length) message += ': ' + changes.filter(c => c.field !== 'deleted').map(c => `${c.label} ${c.from} to ${c.to}`).join('; ');
+  if (reason) message += ` (${reason})`;
+  const ts = Date.now();
+  const entry = {ts, who: 'admin', action, type, entityId: after.id, entityName: nm, changes, reason: reason || '', message,
+    before: before ? clean(before) : null, after: clean(after), hash: hash(ts + JSON.stringify(after) + message)};
+  B.commit([{c: COLL[type], id: after.id, data: after}, {c: 'history', id: uid(), data: entry}])
+    .catch(e => toast('Save failed: ' + (e.code || e.message)));
+  return true;
+}
+
+/* ---------- calculations ---------- */
+function calc() {
+  const ppl = act(S.people), ex = act(S.expenses), co = act(S.contributions);
+  const per = {}; S.people.forEach(p => per[p.id] = {p, contrib: 0, paid: 0, share: 0, net: 0});
+  let total = 0, fundSpent = 0, contribTotal = 0;
+  co.forEach(c => { const a = +c.amount; contribTotal += a; if (per[c.personId]) per[c.personId].contrib += a; });
+  ex.forEach(e => {
+    const a = +e.amount; total += a;
+    if (e.paidBy === 'fund') fundSpent += a; else if (per[e.paidBy]) per[e.paidBy].paid += a;
+    const ids = (e.splitAmong?.length ? e.splitAmong : ppl.map(p => p.id)).filter(id => per[id]);
+    ids.forEach(id => per[id].share += a / ids.length);
+  });
+  Object.values(per).forEach(r => r.net = r.contrib + r.paid - r.share);
+  return {per, total, fundSpent, contribTotal, fund: contribTotal - fundSpent, ex, co, ppl};
+}
+function settle(c) {
+  const r2 = x => Math.round(x * 100) / 100;
+  const n = Object.values(c.per).filter(r => !r.p.deleted || Math.abs(r.net) > .009).map(r => ({name: r.p.name, v: r2(r.net)}));
+  n.push({name: 'Common fund', v: r2(-c.fund)});
+  const cr = n.filter(x => x.v > .009).map(x => ({...x})).sort((a, b) => b.v - a.v);
+  const dr = n.filter(x => x.v < -.009).map(x => ({name: x.name, v: -x.v})).sort((a, b) => b.v - a.v);
+  const out = []; let i = 0, j = 0;
+  while (i < dr.length && j < cr.length) {
+    const m = Math.min(dr[i].v, cr[j].v);
+    out.push({from: dr[i].name, to: cr[j].name, amt: m});
+    dr[i].v -= m; cr[j].v -= m;
+    if (dr[i].v < .01) i++; if (cr[j].v < .01) j++;
+  }
+  return out;
+}
+
+/* ---------- views ---------- */
+const TABS = () => [['dash', 'Overview'], ['exp', 'Expenses'], ['con', 'Contributions'], ['ppl', 'People'], ['his', 'History'], ...(ADMIN ? [['set', 'Settings']] : [])];
+
+function render() {
+  $('#tripName').textContent = S.settings.trip || 'Trip Ledger';
+  document.title = (S.settings.trip || 'Trip') + ' | Trip Ledger';
+  const live = B?.mode === 'firebase';
+  $('#hdr').innerHTML = `
+    <span class="pill ${navigator.onLine ? '' : 'off'}"><i></i>${!navigator.onLine ? 'Offline, will sync later' : live ? 'Live, shared' : 'Demo, this browser only'}</span>
+    <button class="btn sm" data-act="print">Print</button>
+    ${ADMIN ? `<span class="pill">Admin</span><button class="btn sm" data-act="logout">Sign out</button>` : `<button class="btn sm pri" data-act="login">Admin sign in</button>`}`;
+  if (tab === 'set' && !ADMIN) tab = 'dash';
+  $('#nav').innerHTML = TABS().map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">${l}</button>`).join('');
+  const views = {dash: vDash, exp: vExp, con: vCon, ppl: vPpl, his: vHis, set: vSet};
+  const keep = document.activeElement?.dataset?.f, pos = document.activeElement?.selectionStart;
+  $('#app').innerHTML = (B?.mode === 'local' ? `<div class="banner">Demo mode: data is saved only in this browser. Add your Firebase config in <b>index.html</b> so the whole team sees the same data. Admin login here: admin / admin123.</div>` : '') + views[tab]();
+  $('#foot').textContent = `${act(S.expenses).length} expenses, ${S.history.length} recorded changes`;
+  if (keep) { const el = $(`[data-f="${keep}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} } }
+}
+
+function vDash() {
+  const c = calc(), b = +S.settings.budget || 0, pct = b ? c.total / b * 100 : 0;
+  const days = new Set(c.ex.map(e => e.date)).size || 1;
+  const todayT = c.ex.filter(e => e.date === today()).reduce((s, e) => s + +e.amount, 0);
+  const big = c.ex.slice().sort((a, b) => b.amount - a.amount)[0];
+  const cats = {}; c.ex.forEach(e => cats[e.category] = (cats[e.category] || 0) + +e.amount);
+  const catRows = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const cm = catRows[0]?.[1] || 1;
+  const pr = Object.values(c.per).filter(r => !r.p.deleted);
+  const pm = Math.max(...pr.map(r => Math.max(r.contrib, r.share)), 1);
+  const recent = S.history.slice().sort((a, b) => b.ts - a.ts).slice(0, 4);
+  return `
+  <div class="grid g4">
+    <div class="card stat hl"><div class="lbl">Spent so far</div><div class="num">${money(c.total)}</div></div>
+    <div class="card stat bl"><div class="lbl">Contributed by the team</div><div class="num">${money(c.contribTotal)}</div></div>
+    <div class="card stat"><div class="lbl">Common fund left</div><div class="num">${money(c.fund)}</div></div>
+    <div class="card stat"><div class="lbl">Spent today</div><div class="num">${money(todayT)}</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="row between"><h2 style="margin:0">Budget</h2>${b ? `<span class="${pct > 100 ? 'chip' : ''}" style="color:${pct > 100 ? 'var(--lime)' : 'var(--mu)'}">${pct > 100 ? 'Over budget by ' + money(c.total - b) : money(b - c.total) + ' remaining'}</span>` : ''}</div>
+    ${b ? `<div class="meter ${pct >= 80 ? 'warn' : ''}"><div class="track"><div class="fill" style="width:${Math.min(100, pct)}%"></div></div>
+      <div class="cap"><span>${pct.toFixed(0)}% of ${money(b)} used</span><span>Average ${money(c.total / days)} per day with spending</span>${big ? `<span>Biggest: ${esc(big.name)}, ${money(big.amount)}</span>` : ''}</div></div>`
+    : `<p class="hint" style="margin:8px 0 0">No budget set. ${ADMIN ? 'Set one in Settings to see the meter.' : 'The admin can set a budget.'}</p>`}
+  </div>
+  <div class="grid g2c" style="margin-top:14px">
+    <div class="card"><h2>Spending by day</h2>${dailyChart(c.ex)}</div>
+    <div class="card"><h2>Spending by category</h2>${catRows.length ? catRows.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><div class="t"><i style="width:${v / cm * 100}%"></i></div><b>${money(v)}</b></div>`).join('') : emptyBox('No expenses yet', 'Spending will be grouped here.')}</div>
+    <div class="card"><h2>Contributed vs. share of costs</h2>
+      <div class="legend"><span><b></b>Contributed</span><span><b class="l"></b>Share of costs</span></div>
+      ${pr.length ? pr.map(r => `<div style="margin:12px 0"><div class="row between" style="font-size:14px"><span>${esc(r.p.name)}</span><span style="color:var(--mu)">${money(r.contrib)} in, ${money(r.share)} share</span></div>
+        <div class="hb" style="grid-template-columns:1fr;margin:5px 0 0;gap:4px"><div class="t"><i style="width:${r.contrib / pm * 100}%"></i></div><div class="t"><i class="l" style="width:${r.share / pm * 100}%"></i></div></div></div>`).join('') : emptyBox('No people yet', 'Add your team in the People tab.')}
+    </div>
+    <div class="card"><div class="row between"><h2>Latest changes</h2><button class="btn sm" data-act="tab" data-id="his">All history</button></div>
+      ${recent.length ? recent.map(h => `<div style="padding:8px 0;border-top:1px solid var(--line)"><div style="font-size:14.5px">${esc(h.message)}</div><div class="foot" style="margin-top:2px">${fmtTime(h.ts)} by ${esc(h.who)}, commit ${h.hash}</div></div>`).join('') : emptyBox('No changes yet', 'Every add, edit and delete shows up here.')}
+    </div>
+  </div>`;
+}
+function dailyChart(ex) {
+  const m = {}; ex.forEach(e => m[e.date] = (m[e.date] || 0) + +e.amount);
+  const ds = Object.keys(m).sort();
+  if (!ds.length) return emptyBox('No expenses yet', 'Daily totals will appear here.');
+  const out = []; const d = new Date(ds[0] + 'T00:00'), end = new Date(ds[ds.length - 1] + 'T00:00');
+  while (d <= end && out.length < 120) { const k = ymd(d); out.push([k, m[k] || 0]); d.setDate(d.getDate() + 1); }
+  const mx = Math.max(...out.map(x => x[1]), 1);
+  return `<div class="bars">${out.map(([k, v]) => `<div class="bar ${v === mx ? 'mx' : ''}" title="${fmtDate(k)}: ${money(v)}"><i style="height:${v / mx * 82}%"></i><span>${k.slice(8)}</span></div>`).join('')}</div>`;
+}
+const emptyBox = (t, s) => `<div class="empty"><b>${t}</b>${s}</div>`;
+
+/* expenses */
+function filterExp() {
+  let l = S.expenses.filter(e => F.del ? true : !e.deleted);
+  const q = F.q.toLowerCase();
+  if (q) l = l.filter(e => [e.name, e.place, e.note, e.category, pname(e.paidBy)].join(' ').toLowerCase().includes(q));
+  if (F.cat) l = l.filter(e => e.category === F.cat);
+  if (F.who) l = l.filter(e => e.paidBy === F.who);
+  if (F.from) l = l.filter(e => e.date >= F.from);
+  if (F.to) l = l.filter(e => e.date <= F.to);
+  const s = {'date-desc': (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt, 'date-asc': (a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
+    'amt-desc': (a, b) => b.amount - a.amount, 'amt-asc': (a, b) => a.amount - b.amount, 'added-desc': (a, b) => b.createdAt - a.createdAt}[F.sort];
+  return l.sort(s);
+}
+function expList() {
+  const l = filterExp(), tot = l.filter(e => !e.deleted).reduce((s, e) => s + +e.amount, 0);
+  if (!l.length) return emptyBox(S.expenses.length ? 'No expenses match' : 'No expenses yet', S.expenses.length ? 'Change or clear the filters.' : ADMIN ? 'Add the first expense with the button above.' : 'The admin has not added any yet.');
+  return `<div class="sum"><b>${l.filter(e => !e.deleted).length}</b> expenses totalling <b>${money(tot)}</b></div>` + l.map(expCard).join('');
+}
+function expCard(e) {
+  const dt = new Date(e.date + 'T00:00');
+  const sp = !e.splitAmong?.length ? 'everyone' : e.splitAmong.length > 3 ? e.splitAmong.length + ' people' : e.splitAmong.map(pname).join(', ');
+  return `<article class="item ${e.deleted ? 'gone' : ''}">
+    <div class="dt"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-GB', {month: 'short'})}</span></div>
+    <div><h3>${esc(e.name)}</h3><div class="chips"><span class="chip bl">${esc(e.category)}</span>${e.place ? `<span class="chip">at ${esc(e.place)}</span>` : ''}<span class="chip">paid by ${e.paidBy === 'fund' ? 'Common fund' : esc(pname(e.paidBy))}</span><span class="chip">split: ${esc(sp)}</span></div>
+      ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
+      <div class="foot">Spent on ${fmtDate(e.date)}. Added ${fmtTime(e.createdAt)}${e.updatedAt ? `, last edited ${fmtTime(e.updatedAt)}` : ''}${e.deleted ? '. Deleted' : ''}</div></div>
+    <div class="amt num ${e.deleted ? '' : 'l'}">${money(e.amount)}</div>
+    <div class="acts"><button class="btn sm" data-act="ehist" data-id="${e.id}" data-t="expense">History</button>
+      ${ADMIN ? (e.deleted ? `<button class="btn sm pri" data-act="restore" data-t="expense" data-id="${e.id}">Restore</button>` : `<button class="btn sm" data-act="edit-exp" data-id="${e.id}">Edit</button><button class="btn sm ghost" data-act="del" data-t="expense" data-id="${e.id}">Delete</button>`) : ''}</div></article>`;
+}
+function vExp() {
+  const ppl = act(S.people);
+  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">Expenses</h2>
+    <div class="row"><button class="btn" data-act="csv">Export CSV</button>${ADMIN ? `<button class="btn pri" data-act="add-exp">Add expense</button>` : ''}</div></div>
+  <div class="filters">
+    <input type="search" placeholder="Search name, place, notes" data-g="F" data-f="q" value="${esc(F.q)}">
+    <select data-g="F" data-f="cat"><option value="">All categories</option>${CATS.map(c => `<option ${F.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+    <select data-g="F" data-f="who"><option value="">Anyone paid</option><option value="fund" ${F.who === 'fund' ? 'selected' : ''}>Common fund</option>${ppl.map(p => `<option value="${p.id}" ${F.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+    <input type="date" title="From date" data-g="F" data-f="from" value="${F.from}"><input type="date" title="To date" data-g="F" data-f="to" value="${F.to}">
+    <select data-g="F" data-f="sort">${[['date-desc', 'Newest spent'], ['date-asc', 'Oldest spent'], ['amt-desc', 'Highest amount'], ['amt-asc', 'Lowest amount'], ['added-desc', 'Recently added']].map(([v, l]) => `<option value="${v}" ${F.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    ${ADMIN ? `<label class="chk" style="margin:0"><input type="checkbox" data-g="F" data-f="del" ${F.del ? 'checked' : ''}>Show deleted</label>` : ''}
+  </div><div id="list">${expList()}</div>`;
+}
+
+/* contributions */
+function conList() {
+  let l = S.contributions.filter(c => CF.del || !c.deleted);
+  if (CF.who) l = l.filter(c => c.personId === CF.who);
+  if (CF.q) l = l.filter(c => (c.note + pname(c.personId)).toLowerCase().includes(CF.q.toLowerCase()));
+  l.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  if (!l.length) return emptyBox('No contributions yet', ADMIN ? 'Record the first one with the button above.' : 'Nothing has been recorded yet.');
+  const tot = l.filter(c => !c.deleted).reduce((s, c) => s + +c.amount, 0);
+  return `<div class="sum"><b>${l.filter(c => !c.deleted).length}</b> contributions totalling <b>${money(tot)}</b></div>` + l.map(c => {
+    const dt = new Date(c.date + 'T00:00');
+    return `<article class="item ${c.deleted ? 'gone' : ''}"><div class="dt"><b>${dt.getDate()}</b><span>${dt.toLocaleDateString('en-GB', {month: 'short'})}</span></div>
+      <div><h3>${esc(pname(c.personId))}</h3>${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}
+      <div class="foot">Received ${fmtDate(c.date)}. Added ${fmtTime(c.createdAt)}${c.updatedAt ? `, last edited ${fmtTime(c.updatedAt)}` : ''}${c.deleted ? '. Deleted' : ''}</div></div>
+      <div class="amt num l">${money(c.amount)}</div>
+      <div class="acts"><button class="btn sm" data-act="ehist" data-t="contribution" data-id="${c.id}">History</button>
+      ${ADMIN ? (c.deleted ? `<button class="btn sm pri" data-act="restore" data-t="contribution" data-id="${c.id}">Restore</button>` : `<button class="btn sm" data-act="edit-con" data-id="${c.id}">Edit</button><button class="btn sm ghost" data-act="del" data-t="contribution" data-id="${c.id}">Delete</button>`) : ''}</div></article>`;
+  }).join('');
+}
+function vCon() {
+  const c = calc();
+  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">Contributions</h2>${ADMIN ? `<button class="btn pri" data-act="add-con">Add contribution</button>` : ''}</div>
+  <div class="grid g4" style="margin-bottom:16px">${Object.values(c.per).filter(r => !r.p.deleted).map(r => `<div class="card stat"><div class="lbl">${esc(r.p.name)}</div><div class="num">${money(r.contrib)}</div></div>`).join('')}</div>
+  <div class="filters"><input type="search" placeholder="Search person or note" data-g="CF" data-f="q" value="${esc(CF.q)}">
+    <select data-g="CF" data-f="who"><option value="">Everyone</option>${act(S.people).map(p => `<option value="${p.id}" ${CF.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+    ${ADMIN ? `<label class="chk" style="margin:0"><input type="checkbox" data-g="CF" data-f="del" ${CF.del ? 'checked' : ''}>Show deleted</label>` : ''}</div>
+  <div id="list">${conList()}</div>`;
+}
+
+/* people */
+function vPpl() {
+  const c = calc(), rows = Object.values(c.per).filter(r => !r.p.deleted), pay = settle(c);
+  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">People and balances</h2>${ADMIN ? `<button class="btn pri" data-act="add-ppl">Add person</button>` : ''}</div>
+  <div class="grid g2c">
+    <div class="card"><h2>Each person</h2>${rows.length ? rows.map(r => {
+      const n = Math.round(r.net * 100) / 100;
+      return `<div class="person"><div><h3>${esc(r.p.name)}</h3><div class="mini"><span>Contributed <b>${money(r.contrib)}</b></span><span>Paid personally <b>${money(r.paid)}</b></span><span>Share of costs <b>${money(r.share)}</b></span></div>
+        ${ADMIN ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-act="edit-ppl" data-id="${r.p.id}">Rename</button><button class="btn sm ghost" data-act="del" data-t="person" data-id="${r.p.id}">Remove</button><button class="btn sm" data-act="ehist" data-t="person" data-id="${r.p.id}">History</button></div>` : ''}</div>
+        <div class="net ${n > 0 ? 'pos' : n < 0 ? 'neg' : ''}">${money(Math.abs(n))}<small>${n > 0 ? 'gets back' : n < 0 ? 'still owes' : 'settled'}</small></div></div>`;
+    }).join('') : emptyBox('No people yet', ADMIN ? 'Add everyone on the trip first.' : 'The admin has not added anyone yet.')}</div>
+    <div class="card"><h2>Settle up</h2><p class="hint">Fewest payments to clear every balance. The common fund counts as a payer or receiver.</p>
+      ${pay.length ? pay.map(p => `<div class="pay"><span>${esc(p.from)} pays ${esc(p.to)}</span><span class="a">${money(p.amt)}</span></div>`).join('') : emptyBox('All settled', 'Nobody owes anything right now.')}
+      <p class="hint" style="margin-top:14px">Net = contributed + paid personally - share of costs. Common fund left: <b>${money(c.fund)}</b>.</p></div>
+  </div>`;
+}
+
+/* history */
+function commitHTML(h) {
+  return `<div class="commit ${h.action}"><div class="row between"><div class="row" style="gap:8px"><code>${h.hash}</code><span class="tag ${h.action}">${h.action}</span><span class="tag">${h.type}</span></div>
+    <span class="foot" style="margin:0">${fmtTime(h.ts)} by ${esc(h.who)}</span></div>
+    <div class="msg">${esc(h.message)}</div>
+    ${(h.changes || []).filter(c => c.field !== 'deleted' || h.action !== 'create').map(c => `<div class="diff">${esc(c.label)}: ${c.from === null ? `<b>${esc(c.to)}</b>` : `<s>${esc(c.from)}</s> to <b>${esc(c.to)}</b>`}</div>`).join('')}
+    ${ADMIN ? `<div class="row" style="margin-top:10px"><button class="btn sm" data-act="revert" data-id="${h.id}">Undo this change</button></div>` : ''}</div>`;
+}
+function hisList(list) {
+  let l = (list || S.history).slice().sort((a, b) => b.ts - a.ts);
+  if (!list) {
+    if (HF.type) l = l.filter(h => h.type === HF.type);
+    if (HF.action) l = l.filter(h => h.action === HF.action);
+    if (HF.q) l = l.filter(h => (h.message + h.entityName + h.hash + h.reason).toLowerCase().includes(HF.q.toLowerCase()));
+  }
+  return l.length ? `<div class="log">${l.map(commitHTML).join('')}</div>` : emptyBox('No changes recorded', 'Every add, edit and delete will be logged here with the time.');
+}
+function vHis() {
+  return `<div class="row between" style="margin-bottom:14px"><h2 style="font-size:24px">History</h2></div>
+  <div class="filters"><input type="search" placeholder="Search changes or commit id" data-g="HF" data-f="q" value="${esc(HF.q)}">
+    <select data-g="HF" data-f="type"><option value="">All records</option>${['expense', 'contribution', 'person', 'settings'].map(t => `<option ${HF.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select data-g="HF" data-f="action"><option value="">All actions</option>${['create', 'update', 'delete', 'restore', 'revert'].map(t => `<option ${HF.action === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+  <div id="list">${hisList()}</div>`;
+}
+
+/* settings */
+function vSet() {
+  const s = S.settings;
+  return `<h2 style="font-size:24px;margin-bottom:14px">Settings</h2><div class="setgrid">
+  <div class="card"><h2>Trip</h2><form data-form="settings">
+    <label>Trip name<input name="trip" required value="${esc(s.trip)}"></label>
+    <div class="g2"><label>Total budget<input name="budget" type="number" min="0" step="0.01" value="${+s.budget || ''}" placeholder="0 for none"></label>
+    <label>Currency symbol<input name="cur" required maxlength="4" value="${esc(s.cur)}"></label></div>
+    <label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>
+    <button class="btn pri">Save settings</button></form></div>
+  <div class="card"><h2>Admin password</h2><form data-form="password"><div class="err" id="perr"></div>
+    <label>Current password<input name="cur" type="password" required autocomplete="current-password"></label>
+    <label>New password (6+ characters)<input name="nw" type="password" minlength="6" required autocomplete="new-password"></label>
+    <button class="btn blue">Change password</button></form></div>
+  <div class="card"><h2>Backup</h2><p class="hint">Download everything as a JSON file, or restore from one. Restoring adds or overwrites records with the same id.</p>
+    <div class="row"><button class="btn" data-act="backup">Download backup</button><button class="btn" data-act="restorefile">Restore from file</button></div>
+    <input type="file" id="rf" accept=".json" hidden></div></div>`;
+}
+
+/* ---------- dialogs & forms ---------- */
+const dlg = $('#dlg');
+const openDlg = (h, wide) => { dlg.className = wide ? 'wide' : ''; dlg.innerHTML = h; if (!dlg.open) dlg.showModal(); };
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+const opt = (v, cur, l) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l ?? v)}</option>`;
+const btnRow = `<div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Save</button></div>`;
+
+function expForm(id) {
+  const e = id ? S.expenses.find(x => x.id === id) : null, ppl = act(S.people);
+  if (!ppl.length && !e) { toast('Add people first in the People tab'); return; }
+  const sp = e?.splitAmong || [];
+  openDlg(`<form data-form="expense" data-id="${id || ''}"><h3>${e ? 'Edit expense' : 'Add expense'}</h3>
+    <label>Name<input name="name" required value="${esc(e?.name)}" placeholder="Lunch at the beach"></label>
+    <div class="g2"><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${e?.amount ?? ''}"></label>
+    <label>Track date<input name="date" type="date" required value="${e?.date || today()}"></label></div>
+    <div class="g2"><label>Category<select name="category">${CATS.map(c => opt(c, e?.category)).join('')}</select></label>
+    <label>Paid by<select name="paidBy">${opt('fund', e?.paidBy, 'Common fund')}${ppl.map(p => opt(p.id, e?.paidBy, p.name)).join('')}</select></label></div>
+    <label>Where it was spent<input name="place" value="${esc(e?.place)}" placeholder="Cox's Bazar"></label>
+    <fieldset><legend>Split among (leave all unticked for everyone)</legend>${ppl.map(p => `<label class="chk"><input type="checkbox" name="split" value="${p.id}" ${sp.includes(p.id) ? 'checked' : ''}>${esc(p.name)}</label>`).join('')}</fieldset>
+    <label>Notes<textarea name="note" rows="2">${esc(e?.note)}</textarea></label>
+    ${e ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
+}
+function conForm(id) {
+  const c = id ? S.contributions.find(x => x.id === id) : null, ppl = act(S.people);
+  if (!ppl.length && !c) { toast('Add people first in the People tab'); return; }
+  openDlg(`<form data-form="contribution" data-id="${id || ''}"><h3>${c ? 'Edit contribution' : 'Add contribution'}</h3>
+    <label>Person<select name="personId">${ppl.map(p => opt(p.id, c?.personId, p.name)).join('')}</select></label>
+    <div class="g2"><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${c?.amount ?? ''}"></label>
+    <label>Date received<input name="date" type="date" required value="${c?.date || today()}"></label></div>
+    <label>Notes<textarea name="note" rows="2">${esc(c?.note)}</textarea></label>
+    ${c ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
+}
+function pplForm(id) {
+  const p = id ? S.people.find(x => x.id === id) : null;
+  openDlg(`<form data-form="person" data-id="${id || ''}"><h3>${p ? 'Rename person' : 'Add person'}</h3>
+    <label>Name<input name="name" required value="${esc(p?.name)}"></label>${btnRow}</form>`);
+}
+function loginForm() {
+  openDlg(`<form data-form="login"><h3>Admin sign in</h3><div class="err" id="lerr"></div>
+    <label>Username<input name="u" required autocomplete="username" value="admin"></label>
+    <label>Password<input name="p" type="password" required autocomplete="current-password"></label>
+    <div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Sign in</button></div></form>`);
+}
+function entityHistory(type, id) {
+  const l = S.history.filter(h => h.type === type && h.entityId === id);
+  openDlg(`<h3>History</h3>${hisList(l)}<div class="row end"><button class="btn" data-act="close">Close</button></div>`, true);
+}
+
+function onSubmit(ev) {
+  const f = ev.target.closest('form[data-form]'); if (!f) return;
+  ev.preventDefault();
+  const fd = new FormData(f), v = n => (fd.get(n) ?? '').toString().trim(), now = Date.now(), id = f.dataset.id, kind = f.dataset.form;
+  if (kind === 'login') {
+    B.login(v('u'), fd.get('p')).then(() => { dlg.close(); toast('Signed in'); }).catch(() => { $('#lerr').textContent = 'Wrong username or password.'; });
+    return;
+  }
+  if (!ADMIN) { toast('Sign in as admin to edit'); return; }
+  if (kind === 'password') {
+    B.changePassword(fd.get('cur'), fd.get('nw')).then(() => { toast('Password changed'); f.reset(); $('#perr').textContent = ''; })
+      .catch(() => { $('#perr').textContent = 'Current password is wrong, or sign in again and retry.'; });
+    return;
+  }
+  if (kind === 'expense') {
+    const old = id ? S.expenses.find(x => x.id === id) : null;
+    const after = {id: id || uid(), name: v('name'), amount: +v('amount'), date: v('date'), category: v('category'), place: v('place'), paidBy: v('paidBy'),
+      splitAmong: fd.getAll('split'), note: v('note'), createdAt: old?.createdAt || now, createdBy: old?.createdBy || 'admin', updatedAt: old ? now : null, deleted: false};
+    if (commitChange('expense', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Expense updated' : 'Expense added'); }
+  } else if (kind === 'contribution') {
+    const old = id ? S.contributions.find(x => x.id === id) : null;
+    const after = {id: id || uid(), personId: v('personId'), amount: +v('amount'), date: v('date'), note: v('note'), createdAt: old?.createdAt || now, createdBy: 'admin', updatedAt: old ? now : null, deleted: false};
+    if (commitChange('contribution', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Contribution updated' : 'Contribution added'); }
+  } else if (kind === 'person') {
+    const old = id ? S.people.find(x => x.id === id) : null;
+    const after = {id: id || uid(), name: v('name'), createdAt: old?.createdAt || now, updatedAt: old ? now : null, deleted: false};
+    if (commitChange('person', old, after, '', old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Person renamed' : 'Person added'); }
+  } else if (kind === 'settings') {
+    const old = current('settings'), after = {id: 'settings', trip: v('trip'), budget: +v('budget') || 0, cur: v('cur')};
+    if (commitChange('settings', old, after, v('reason'), 'update')) toast('Settings saved');
+  }
+}
+
+/* ---------- actions ---------- */
+function csv() {
+  const rows = [['Name', 'Amount', 'Track date', 'Category', 'Where spent', 'Paid by', 'Split among', 'Notes', 'Added at', 'Last edited']];
+  filterExp().filter(e => !e.deleted).forEach(e => rows.push([e.name, e.amount, e.date, e.category, e.place, fmtVal('paidBy', e.paidBy), fmtVal('splitAmong', e.splitAmong), e.note, fmtTime(e.createdAt), e.updatedAt ? fmtTime(e.updatedAt) : '']));
+  const t = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  download('expenses.csv', '\ufeff' + t, 'text/csv');
+}
+function download(name, text, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function softToggle(type, id, del) {
+  const cur = current(type, id); if (!cur) return;
+  if (del && !confirm('Delete this? It stays in history and can be restored.')) return;
+  commitChange(type, cur, {...cur, deleted: del, updatedAt: Date.now()}, '', del ? 'delete' : 'restore');
+  toast(del ? 'Deleted' : 'Restored');
+}
+function revert(hid) {
+  const h = S.history.find(x => x.id === hid); if (!h) return;
+  const cur = current(h.type, h.entityId); if (!cur) return;
+  if (!confirm(`Undo "${h.message}"?`)) return;
+  const target = h.before ? {...h.before} : {...cur, deleted: true};
+  if (h.type !== 'settings') target.updatedAt = Date.now();
+  if (commitChange(h.type, cur, target, 'undo ' + h.hash, 'revert')) toast('Change undone');
+}
+function backup() {
+  const {settings, ...rest} = S; download('trip-backup.json', JSON.stringify({...rest, settings: {trip: settings.trip, budget: settings.budget, cur: settings.cur}}, null, 2), 'application/json');
+}
+function restoreFile(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result), ops = [];
+      ['people', 'expenses', 'contributions', 'history'].forEach(c => (d[c] || []).forEach(x => ops.push({c, id: x.id, data: x})));
+      if (d.settings) ops.push({c: 'meta', id: 'settings', data: {id: 'settings', ...d.settings}});
+      if (!ops.length) throw new Error('empty');
+      B.commit(ops).then(() => toast(`Restored ${ops.length} records`)).catch(e => toast('Restore failed: ' + (e.code || e.message)));
+    } catch { toast('That file is not a valid backup'); }
+  };
+  r.readAsText(file);
+}
+
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset.act, id = t.dataset.id, ty = t.dataset.t;
+  if (a === 'tab') { tab = id; render(); window.scrollTo({top: 0}); }
+  else if (a === 'close') dlg.close();
+  else if (a === 'login') loginForm();
+  else if (a === 'logout') B.logout().then(() => toast('Signed out'));
+  else if (a === 'print') window.print();
+  else if (a === 'add-exp') expForm();
+  else if (a === 'edit-exp') expForm(id);
+  else if (a === 'add-con') conForm();
+  else if (a === 'edit-con') conForm(id);
+  else if (a === 'add-ppl') pplForm();
+  else if (a === 'edit-ppl') pplForm(id);
+  else if (a === 'del') softToggle(ty, id, true);
+  else if (a === 'restore') softToggle(ty, id, false);
+  else if (a === 'ehist') entityHistory(ty, id);
+  else if (a === 'revert') revert(id);
+  else if (a === 'csv') csv();
+  else if (a === 'backup') backup();
+  else if (a === 'restorefile') $('#rf').click();
+});
+const onFilter = ev => {
+  const t = ev.target, g = G[t.dataset.g]; if (!g) return;
+  g[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+  const l = $('#list'); if (!l) return;
+  l.innerHTML = {exp: expList, con: conList, his: hisList}[tab]();
+};
+document.addEventListener('input', onFilter);
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'rf' && ev.target.files[0]) { restoreFile(ev.target.files[0]); ev.target.value = ''; return; }
+  if (ev.target.dataset.g && ev.target.type !== 'search' && ev.target.type !== 'text') onFilter(ev);
+});
+document.addEventListener('submit', onSubmit);
+addEventListener('online', render); addEventListener('offline', render);
+
+/* ---------- boot ---------- */
+const onState = d => { S = {...DEF(), ...d, settings: {...DEF().settings, ...d.settings}}; if (!dlg.open) render(); else { render(); } };
+(async () => {
+  try { B = window.FIREBASE_CONFIG ? await fbBackend() : localBackend(); }
+  catch (e) { console.error(e); B = localBackend(); toast('Could not reach Firebase, using demo mode'); }
+  B.init(onState);
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
