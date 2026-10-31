@@ -153,14 +153,7 @@ footer{color:var(--mu);font-size:13px;text-align:center;padding:30px 0 40px}
 <body>
 <script>
 /* Paste your Firebase web config here (see README.md). Leave null for demo mode. */
-window.FIREBASE_CONFIG = null;
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
+window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyAfSp5IRRjsQRY9w-ZFBPJjQSQBqHAqlI4",
   authDomain: "trip-expense-ec297.firebaseapp.com",
   projectId: "trip-expense-ec297",
@@ -168,9 +161,12 @@ const firebaseConfig = {
   messagingSenderId: "230105746061",
   appId: "1:230105746061:web:5760252115ed0ba03770c4"
 };
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+/* Example:
+window.FIREBASE_CONFIG = {
+  apiKey: "...", authDomain: "...firebaseapp.com", projectId: "...",
+  storageBucket: "...", messagingSenderId: "...", appId: "..."
+};
+*/
 </script>
 
 <div class="wrap">
