@@ -176,6 +176,10 @@ label.chk input{accent-color:var(--lime);width:16px;height:16px}
 footer{color:var(--mu);font-size:13.5px;text-align:center;padding:10px 0 46px}
 footer .sync{font-size:12.5px;margin-top:2px}
 .only-m{display:none!important}
+[hidden]{display:none!important}
+.tsel{background:var(--s2);border:1px solid var(--line);border-radius:10px;padding:0 12px;height:36px;font-weight:700;font-size:14px;max-width:190px}
+.shd{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:28px 0 10px}
+.shd h3{font-family:'Bricolage Grotesque',sans-serif;font-size:19px}
 @media(max-width:700px){
   nav{position:fixed;top:auto;bottom:0;left:0;right:0;border-top:1px solid var(--line);border-bottom:0;padding-bottom:env(safe-area-inset-bottom)}
   .navin{padding:0 6px;gap:0}
@@ -231,10 +235,11 @@ const fmtDate = d => new Date(d + 'T00:00').toLocaleDateString('en-GB', {day:'nu
 const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, '0').slice(0, 7); };
 const clean = o => JSON.parse(JSON.stringify(o));
 const ADMIN_EMAILS = (window.ADMIN_EMAILS || []).map(e => String(e).toLowerCase());
-const CATS = ['Food', 'Transport', 'Stay', 'Tickets', 'Shopping', 'Fuel', 'Medical', 'Other'];
+const DEFAULT_CATS = ['Food', 'Transport', 'Stay', 'Tickets', 'Shopping', 'Fuel', 'Medical', 'Other'];
 
-const DEF = () => ({people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', destination: '', start: '', end: '', budget: 0, cur: '৳'}});
-let S = DEF(), ADMIN = false, B = null, tab = 'dash', READY = true;
+const DEF = () => ({trips: [], people: [], expenses: [], contributions: [], history: [], settings: {trip: 'Our Trip', destination: '', start: '', end: '', budget: 0, cur: '৳', cats: DEFAULT_CATS.slice()}});
+let S = DEF(), R = DEF(), TID = null, ADMIN = false, B = null, tab = 'dash', READY = true;
+let PREF = (() => { try { return localStorage.getItem('tl-trip'); } catch { return null; } })();
 const F = {q: '', cat: '', who: '', from: '', to: '', sort: 'date-desc', del: false};
 const CF = {who: '', q: '', del: false};
 const HF = {q: '', type: '', action: ''};
@@ -258,6 +263,7 @@ const toast = (m, label, fn) => {
 function localBackend() {
   const K = 'trip-ledger-v1';
   let data = JSON.parse(localStorage.getItem(K) || 'null') || {...DEF(), settings: {...DEF().settings, user: 'admin', pass: 'admin123'}};
+  data.trips = data.trips || [];
   let cb;
   const emit = () => { localStorage.setItem(K, JSON.stringify(data)); cb(data); };
   return {
@@ -266,7 +272,7 @@ function localBackend() {
     commit(ops) {
       ops.forEach(o => {
         if (o.c === 'meta') { data.settings = {...data.settings, ...o.data}; return; }
-        const a = data[o.c], i = a.findIndex(x => x.id === o.id);
+        const a = data[o.c] || (data[o.c] = []), i = a.findIndex(x => x.id === o.id);
         if (o.del) { if (i > -1) a.splice(i, 1); }
         else if (i > -1) a[i] = {...o.data, id: o.id};
         else a.push({...o.data, id: o.id});
@@ -299,8 +305,8 @@ async function fbBackend() {
   return {
     mode: 'firebase',
     init(cb) {
-      const seen = new Set(), mark = k => { seen.add(k); st.__ready = seen.size >= 6; };
-      ['people', 'expenses', 'contributions', 'history'].forEach(c =>
+      const seen = new Set(), mark = k => { seen.add(k); st.__ready = seen.size >= 7; };
+      ['people', 'expenses', 'contributions', 'history', 'trips'].forEach(c =>
         Fs.onSnapshot(Fs.collection(db, c), s => { st[c] = s.docs.map(d => ({...d.data(), id: d.id})); mark(c); cb(st); }, e => { console.error(c, e); mark(c); cb(st); }));
       Fs.onSnapshot(Fs.doc(db, 'meta', 'settings'), s => { if (s.exists()) st.settings = {...DEF().settings, ...s.data()}; mark('meta'); cb(st); }, e => { console.error(e); mark('meta'); cb(st); });
       A.onAuthStateChanged(auth, u => { ADMIN = !!u && ADMIN_EMAILS.includes((u.email || '').toLowerCase()); mark('auth'); cb(st); });
@@ -327,17 +333,21 @@ async function fbBackend() {
 }
 
 /* ---------- change tracking (git-like) ---------- */
-const COLL = {expense: 'expenses', contribution: 'contributions', person: 'people', settings: 'meta'};
+const COLL = {expense: 'expenses', contribution: 'contributions', person: 'people', trip: 'trips'};
+const EXC = {none: 'None', exempt: 'Pays no share', custom: 'Custom target'};
 const FIELDS = {
   expense: [['name','Name'],['amount','Amount'],['date','Track date'],['time','Time'],['category','Category'],['place','Place'],['splitAmong','Split among'],['note','Notes'],['deleted','Deleted']],
   contribution: [['personId','Person'],['amount','Amount'],['date','Date'],['time','Time'],['method','Method'],['ref','Reference'],['note','Notes'],['deleted','Deleted']],
-  person: [['name','Name'],['deleted','Deleted']],
-  settings: [['trip','Trip name'],['destination','Destination'],['start','Start date'],['end','End date'],['budget','Target budget']]
+  person: [['name','Name'],['exception','Exception'],['target','Custom target'],['deleted','Deleted']],
+  trip: [['name','Trip name'],['destination','Destination'],['start','Start date'],['end','End date'],['budget','Target budget'],['live','Visible to everyone']]
 };
 function fmtVal(f, v) {
+  if (f === 'target') return v ? money(v) : '-';
   if (f === 'amount' || f === 'budget') return money(v);
   if (f === 'personId') return pname(v);
   if (f === 'splitAmong') return !v || !v.length ? 'Everyone' : v.map(pname).join(', ');
+  if (f === 'exception') return EXC[v || 'none'];
+  if (f === 'live') return v === false ? 'no' : 'yes';
   if (f === 'deleted') return v ? 'yes' : 'no';
   if (f === 'date' || f === 'start' || f === 'end') return v ? fmtDate(v) : '-';
   if (f === 'time') return v ? fmtClock(v) : '-';
@@ -345,12 +355,16 @@ function fmtVal(f, v) {
 }
 function entName(type, o) {
   if (type === 'contribution') return pname(o.personId) + ' ' + money(o.amount);
-  if (type === 'settings') return 'Trip settings';
   return o.name;
 }
 function current(type, id) {
-  if (type === 'settings') { const s = S.settings; return {id: 'settings', trip: s.trip, destination: s.destination || '', start: s.start || '', end: s.end || '', budget: s.budget}; }
+  if (type === 'trip') return S.trips.find(x => x.id === id);
   return S[COLL[type]].find(x => x.id === id);
+}
+const fail = e => toast(e.code === 'permission-denied' ? 'Permission denied. Publish the Firestore rules for your admin email.' : 'Save failed: ' + (e.code || e.message));
+function mkEntry(o) {
+  const ts = Date.now();
+  return {ts, who: 'admin', changes: [], reason: '', before: null, after: null, ...o, hash: hash(ts + JSON.stringify(o.after) + o.message)};
 }
 function commitChange(type, before, after, reason, action) {
   const changes = [];
@@ -360,35 +374,62 @@ function commitChange(type, before, after, reason, action) {
   });
   if (before && !changes.length) { toast('Nothing changed'); return false; }
   if (type === 'person') PEND[after.id] = after.name;
-  const nm = type === 'contribution' ? pname(after.personId) : entName(type, after), label = type === 'settings' ? 'settings' : type;
+  const nm = type === 'contribution' ? pname(after.personId) : entName(type, after);
   const verb = {create: 'Added', update: 'Updated', delete: 'Deleted', restore: 'Restored', revert: 'Reverted'}[action];
-  let message = `${verb} ${label} "${nm}"`;
+  let message = `${verb} ${type} "${nm}"`;
   if (action === 'create' && (type === 'expense' || type === 'contribution')) message += ` ${type === 'expense' ? 'for' : 'of'} ${money(after.amount)}`;
   if ((action === 'update' || action === 'revert') && changes.length) message += ': ' + changes.filter(c => c.field !== 'deleted').map(c => `${c.label} ${c.from} to ${c.to}`).join('; ');
   if (reason) message += ` (${reason})`;
-  const ts = Date.now();
-  const entry = {ts, who: 'admin', action, type, entityId: after.id, entityName: nm, changes, reason: reason || '', message,
-    before: before ? clean(before) : null, after: clean(after), hash: hash(ts + JSON.stringify(after) + message)};
-  B.commit([{c: COLL[type], id: after.id, data: after}, {c: 'history', id: uid(), data: entry}])
-    .catch(e => toast(e.code === 'permission-denied' ? 'Permission denied. Publish the Firestore rules for your admin email.' : 'Save failed: ' + (e.code || e.message)));
+  const entry = mkEntry({action, type, entityId: after.id, entityName: nm, changes, reason: reason || '', message,
+    before: before ? clean(before) : null, after: clean(after), tripId: type === 'trip' ? after.id : (after.tripId || TID)});
+  B.commit([{c: COLL[type], id: after.id, data: after}, {c: 'history', id: uid(), data: entry}]).catch(fail);
   return true;
 }
 
 /* ---------- calculations ---------- */
 function calc() {
   const ppl = act(S.people), ex = act(S.expenses), co = act(S.contributions);
-  const n = ppl.length, target = +S.settings.budget || 0, each = n ? target / n : 0;
-  const per = {}; S.people.forEach(p => per[p.id] = {p, given: 0, share: 0, bal: 0, net: 0});
+  const n = ppl.length, target = +S.settings.budget || 0;
+  const reg = ppl.filter(p => !p.exception || p.exception === 'none'), fixed = ppl.filter(p => p.exception === 'custom');
+  const each = reg.length ? Math.max(0, target - fixed.reduce((s, p) => s + (+p.target || 0), 0)) / reg.length : 0;
+  const goal = p => p.exception === 'exempt' ? 0 : p.exception === 'custom' ? +p.target || 0 : each;
+  const wt = p => p.exception === 'exempt' ? 0 : p.exception === 'custom' ? (each > 0 ? (+p.target || 0) / each : 1) : 1;
+  const per = {}; S.people.forEach(p => per[p.id] = {p, given: 0, share: 0, bal: 0, net: 0, goal: goal(p), w: wt(p)});
   let total = 0, collected = 0;
   co.forEach(c => { const a = +c.amount; collected += a; if (per[c.personId]) per[c.personId].given += a; });
   ex.forEach(e => {
     const a = +e.amount; total += a;
-    const ids = (e.splitAmong?.length ? e.splitAmong : ppl.map(p => p.id)).filter(id => per[id]);
-    ids.forEach(id => per[id].share += a / ids.length);
+    const ids = (e.splitAmong?.length ? e.splitAmong : ppl.map(p => p.id)).filter(id => per[id] && per[id].w > 0);
+    const tw = ids.reduce((s, id) => s + per[id].w, 0);
+    ids.forEach(id => per[id].share += a * per[id].w / tw);
   });
-  Object.values(per).forEach(r => { r.bal = r.given - each; r.net = r.given - r.share; });
+  Object.values(per).forEach(r => { r.bal = r.given - r.goal; r.net = r.given - r.share; });
   return {per, n, target, each, total, collected, toCollect: Math.max(0, target - collected), fund: collected - total, ex, co, ppl};
 }
+
+/* ---------- trips and categories ---------- */
+const tripsAll = () => {
+  const l = R.trips.slice(), s = R.settings;
+  if (!l.some(t => t.id === 'main')) l.push({id: 'main', name: s.trip || 'Our Trip', destination: s.destination || '', start: s.start || '', end: s.end || '', budget: +s.budget || 0, live: true, createdAt: 0, virtual: true});
+  return l.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+};
+const visTrips = () => ADMIN ? tripsAll() : tripsAll().filter(t => t.live !== false);
+const inTrip = x => (x.tripId || 'main') === TID;
+function rebuild() {
+  const all = tripsAll(), vis = visTrips();
+  TID = (vis.find(t => t.id === PREF) || vis[0])?.id || null;
+  const t = all.find(x => x.id === TID) || null;
+  S = {...R, trips: all, trip: t, people: R.people.filter(inTrip), expenses: R.expenses.filter(inTrip), contributions: R.contributions.filter(inTrip),
+    history: R.history.filter(h => h.tripId === '*' || (h.tripId || 'main') === TID),
+    settings: {...R.settings, trip: t ? t.name : 'Trip Ledger', destination: t?.destination || '', start: t?.start || '', end: t?.end || '', budget: +t?.budget || 0}};
+}
+function setPref(id) { PREF = id; CF.who = ''; try { localStorage.setItem('tl-trip', id); } catch {} }
+const catList = () => Array.isArray(S.settings.cats) && S.settings.cats.length ? S.settings.cats : DEFAULT_CATS;
+const catsWith = x => x && !catList().includes(x) ? [...catList(), x] : catList();
+const usedCats = () => [...new Set([...catList(), ...S.expenses.map(e => e.category).filter(Boolean)])];
+const sharers = () => act(S.people).filter(p => p.exception !== 'exempt');
+const tm = x => x.time ? fmtClock(x.time) : x.createdAt ? new Date(x.createdAt).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true}).toLowerCase() : '';
+const tripSel = () => { const l = visTrips(); return l.length > 1 ? `<select class="tsel" data-trip aria-label="Trip">${l.map(t => `<option value="${esc(t.id)}" ${t.id === TID ? 'selected' : ''}>${esc(t.name)}${t.live === false ? ' (hidden)' : ''}</option>`).join('')}</select>` : ''; };
 
 /* ---------- views ---------- */
 const IC = {
@@ -396,10 +437,12 @@ const IC = {
   exp: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
   ppl: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5a3 3 0 0 1 0 6M18 14c2 .6 3 2.6 3 6"/>',
   set: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.6c-.4-1-1.4-1.5-2.8-1.5-1.7 0-2.8.8-2.8 1.9 0 2.6 5.8 1.2 5.8 3.9 0 1.2-1.2 2-3 2-1.5 0-2.6-.6-3-1.7M12 6.5v1.6M12 15.9v1.6"/>',
-  his: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>'
+  his: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+  cfg: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'
 };
 const icon = k => `<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
 const TABS = [['dash', 'Overview'], ['exp', 'Expenses'], ['ppl', 'Members'], ['set', 'Settle up'], ['his', 'Activity']];
+const tabs = () => ADMIN ? [...TABS, ['cfg', 'Settings']] : TABS;
 const mi = (a, label, attrs = '') => `<button data-act="${a}" ${attrs}>${label}</button>`;
 const menu = (items, cls = '', label = '&#8943;') => `<details class="menu ${cls}"><summary aria-label="${cls === 'fab' ? 'Add' : 'More actions'}">${label}</summary><div class="mn">${items.join('')}</div></details>`;
 const av = n => `<div class="av">${esc(((n || '?').trim()[0] || '?').toUpperCase())}</div>`;
@@ -425,19 +468,20 @@ function tripSub() {
   return (parts.join(', ') + (st ? (parts.length ? ' (' + st + ')' : st) : '')) || 'Shared trip expenses';
 }
 function render() {
+  if (tab === 'cfg' && !ADMIN) tab = 'dash';
   const s = S.settings, live = B?.mode === 'firebase', online = navigator.onLine;
   $('#tripName').textContent = s.trip || 'Trip Ledger';
   $('#tripSub').textContent = tripSub();
   document.title = (s.trip || 'Trip') + ' | Trip Ledger';
-  $('#hdr').innerHTML = ADMIN
-    ? menu([mi('edit-trip', 'Trip management'), mi('account', 'Password and backup'), mi('logout', 'Sign out')], 'hdrm', 'Admin &#9662;')
-    : `<button class="btn sm" data-act="login">Admin sign in</button>`;
-  $('#navin').innerHTML = TABS.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">${icon(k)}<span>${l}</span></button>`).join('');
+  $('#hdr').innerHTML = tripSel() + (ADMIN
+    ? menu([mi('account', 'Password and backup'), mi('logout', 'Sign out')], 'hdrm', 'Admin &#9662;')
+    : `<button class="btn sm" data-act="login">Admin sign in</button>`);
+  $('#navin').innerHTML = tabs().map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">${icon(k)}<span>${l}</span></button>`).join('');
   $('#note').innerHTML = (!online ? `<div class="notice">You are offline. Changes are saved on this device and sync when you reconnect.</div>` : '')
     + (B?.mode === 'local' ? `<div class="notice">Demo mode: data stays in this browser. Add your Firebase config to share it with the team. Admin login here: admin / admin123.</div>` : '');
   const keep = document.activeElement?.dataset?.f, pos = document.activeElement?.selectionStart;
-  $('#app').innerHTML = !READY ? skel() : {dash: vDash, exp: vExp, ppl: vPpl, set: vSet, his: vHis}[tab]();
-  $('#fab').innerHTML = ADMIN ? menu([mi('add-exp', 'Add expense'), mi('add-con', 'Add payment'), mi('add-ppl', 'Add member')], 'fab', '+') : '';
+  $('#app').innerHTML = !READY ? skel() : !S.trip ? emptyBox('No trip is live', 'The admin has not published a trip yet.') : {dash: vDash, exp: vExp, ppl: vPpl, set: vSet, his: vHis, cfg: vCfg}[tab]();
+  $('#fab').innerHTML = ADMIN ? menu([mi('add-exp', 'Add expense'), mi('add-con', 'Add money'), mi('add-ppl', 'Add member')], 'fab', '+') : '';
   $('#foot').innerHTML = `<div>Khaled 2026</div><div class="sync">${!online ? 'Offline' : live ? 'Live, shared with the team' : 'Demo mode'}</div>`;
   if (keep) { const el = $(`[data-f="${keep}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} } }
 }
@@ -445,10 +489,10 @@ function render() {
 /* overview */
 function vDash() {
   const c = calc(), n = c.n, spent = c.total;
-  const owing = Object.values(c.per).filter(r => !r.p.deleted && r.given - c.each < -0.009).sort((a, b) => (a.given - c.each) - (b.given - c.each));
+  const owing = Object.values(c.per).filter(r => !r.p.deleted && r.given - r.goal < -0.009).sort((a, b) => (a.given - a.goal) - (b.given - b.goal));
   const inFund = Math.max(0, c.collected - spent), todo = c.toCollect, sum = spent + inFund + todo;
   const sg = (cls, v) => v > 0 ? `<i class="${cls}" style="width:${(v / sum * 100).toFixed(2)}%"></i>` : '';
-  const steps = [['Set the target budget', c.target > 0, 'edit-trip', 'Set budget'], ['Add the members', n > 0, 'add-ppl', 'Add members'], ['Record what each member has paid', c.co.length > 0, 'add-con', 'Add payment']];
+  const steps = [['Set the target budget', c.target > 0, 'edit-trip', 'Set budget'], ['Add the members', n > 0, 'add-ppl', 'Add members'], ['Record what each member has paid', c.co.length > 0, 'add-con', 'Add money']];
   const setup = ADMIN && steps.some(s => !s[1]) ? `<section class="card" style="margin-bottom:16px"><h2>Set up your trip</h2><p class="hint">Three quick steps, then everyone can follow the money.</p><div style="margin-top:10px">${steps.map(s => `<div class="todo"><span class="tick ${s[1] ? 'done' : ''}">${s[1] ? '&#10003;' : ''}</span><span style="flex:1;${s[1] ? 'color:var(--mu);text-decoration:line-through' : ''}">${s[0]}</span>${s[1] ? '' : `<button class="btn sm pri" data-act="${s[2]}">${s[3]}</button>`}</div>`).join('')}</div></section>` : '';
   const recent = c.ex.slice().sort(byTime).slice(0, 5);
   const cats = {}; c.ex.forEach(e => cats[e.category] = (cats[e.category] || 0) + +e.amount);
@@ -471,11 +515,11 @@ function vDash() {
   </div>
   <div class="two">
     <section class="pane"><div class="sech"><h2>Still to pay</h2><button class="lnk" data-act="goto-bal">All members</button></div>
-      ${owing.length ? owing.slice(0, 6).map(r => `<div class="ri">${av(r.p.name)}<div class="rm"><div class="rt">${esc(r.p.name)}</div><div class="rs">Paid ${money(r.given)} of ${money(c.each)}</div></div><span class="st owe">Owes ${money(c.each - r.given)}</span></div>`).join('') + (owing.length > 6 ? `<div class="ri"><button class="lnk" data-act="goto-bal">and ${owing.length - 6} more</button></div>` : '')
+      ${owing.length ? owing.slice(0, 6).map(r => `<div class="ri">${av(r.p.name)}<div class="rm"><div class="rt">${esc(r.p.name)}</div><div class="rs">Paid ${money(r.given)} of ${money(r.goal)}</div></div><span class="st owe">Owes ${money(r.goal - r.given)}</span></div>`).join('') + (owing.length > 6 ? `<div class="ri"><button class="lnk" data-act="goto-bal">and ${owing.length - 6} more</button></div>` : '')
         : n ? emptyBox('Everyone is paid up', 'Every member has given their full share.') : emptyBox('No members yet', 'Members appear here once the admin adds them.')}
     </section>
     <section class="pane"><div class="sech"><h2>Recent expenses</h2><button class="lnk" data-act="tab" data-id="exp">See all</button></div>
-      ${recent.length ? recent.map(e => `<div class="ri">${av(e.category)}<div class="rm"><div class="rt">${esc(e.name)}</div><div class="rs">${esc(e.category)}, ${fmtDate(e.date)}</div></div><div class="ra">${money(e.amount)}</div></div>`).join('') : emptyBox('No expenses yet', 'Spending will show up here.')}
+      ${recent.length ? recent.map(e => `<div class="ri">${av(e.category)}<div class="rm"><div class="rt">${esc(e.name)}</div><div class="rs">${[e.category, fmtDate(e.date), tm(e)].filter(Boolean).map(esc).join(', ')}</div></div><div class="ra">${money(e.amount)}</div></div>`).join('') : emptyBox('No expenses yet', 'Spending will show up here.')}
     </section>
   </div>
   <div class="two">
@@ -509,7 +553,7 @@ function filterExp() {
 function expRow(e, showDate) {
   const items = !ADMIN ? [] : e.deleted ? [mi('restore', 'Restore', `data-t="expense" data-id="${e.id}"`)]
     : [mi('edit-exp', 'Edit', `data-id="${e.id}"`), mi('ehist', 'History', `data-t="expense" data-id="${e.id}"`), mi('del', 'Delete', `data-t="expense" data-id="${e.id}"`)];
-  const sub = [e.category, e.place, showDate ? fmtDate(e.date) : '', e.time ? fmtClock(e.time) : ''].filter(Boolean).map(esc).join(', ');
+  const sub = [e.category, e.place, showDate ? fmtDate(e.date) : '', tm(e)].filter(Boolean).map(esc).join(', ');
   return `<div class="ri ${e.deleted ? 'gone' : ''}">${av(e.category)}<div class="rm"><div class="rt">${esc(e.name)}${e.deleted ? '<span class="badge">deleted</span>' : e.updatedAt ? `<button class="badge" data-act="ehist" data-t="expense" data-id="${e.id}" title="See what changed">edited</button>` : ''}</div>
     <div class="rs">${sub}</div>${e.note ? `<div class="rn">${esc(e.note)}</div>` : ''}</div><div class="ra">${money(e.amount)}</div>${items.length ? menu(items) : ''}</div>`;
 }
@@ -528,7 +572,7 @@ function vExp() {
     <div class="row"><button class="btn" data-act="csv">Export CSV</button>${ADMIN ? `<button class="btn pri" data-act="add-exp">Add expense</button>` : ''}</div></div>
   <div class="filters">
     <input type="search" placeholder="Search name, place or notes" data-g="F" data-f="q" value="${esc(F.q)}">
-    <select data-g="F" data-f="cat" aria-label="Category"><option value="">All categories</option>${CATS.map(c => `<option ${F.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+    <select data-g="F" data-f="cat" aria-label="Category"><option value="">All categories</option>${usedCats().map(c => `<option ${F.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     <select data-g="F" data-f="sort" aria-label="Sort">${[['date-desc', 'Newest first'], ['date-asc', 'Oldest first'], ['amt-desc', 'Highest amount'], ['amt-asc', 'Lowest amount'], ['added-desc', 'Recently added']].map(([v, l]) => `<option value="${v}" ${F.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </div>
   <details class="more"><summary>More filters</summary><div class="filters" style="margin:0">
@@ -543,13 +587,13 @@ function balTable() {
   if (!c.n) return emptyBox('No members yet', ADMIN ? 'Add everyone on the trip, with what each has paid so far.' : 'The admin has not added members yet.', ADMIN ? `<button class="btn pri" data-act="add-ppl">Add member</button>` : '');
   const given = rows.reduce((s, r) => s + r.given, 0), tb = Math.round((given - c.target) * 100) / 100;
   if (MF.q) rows = rows.filter(r => r.p.name.toLowerCase().includes(MF.q.toLowerCase()));
-  rows.sort(MF.sort === 'name' ? (a, b) => a.p.name.localeCompare(b.p.name) : MF.sort === 'paid' ? (a, b) => b.given - a.given : (a, b) => (a.given - c.each) - (b.given - c.each) || a.p.name.localeCompare(b.p.name));
+  rows.sort(MF.sort === 'name' ? (a, b) => a.p.name.localeCompare(b.p.name) : MF.sort === 'paid' ? (a, b) => b.given - a.given : (a, b) => (a.given - a.goal) - (b.given - b.goal) || a.p.name.localeCompare(b.p.name));
   if (!rows.length) return emptyBox('No member found', 'Try another name.');
   return `<div class="rows"><div class="tw"><table class="tbl"><thead><tr><th>Member</th><th>Given</th><th class="hide-m">Target</th><th>Balance</th>${ADMIN ? '<th></th>' : ''}</tr></thead><tbody>
-    ${rows.map(r => { const b = Math.round((r.given - c.each) * 100) / 100, pc = c.each ? Math.min(100, r.given / c.each * 100) : 0;
-      return `<tr><td><button class="nm" data-act="member" data-id="${r.p.id}">${esc(r.p.name)}</button><div class="mb"><i class="${b >= 0 ? 'l' : ''}" style="width:${pc}%"></i></div></td><td>${money(r.given)}</td><td class="hide-m">${money(c.each)}</td>
+    ${rows.map(r => { const b = Math.round((r.given - r.goal) * 100) / 100, pc = r.goal ? Math.min(100, r.given / r.goal * 100) : 0;
+      return `<tr><td><button class="nm" data-act="member" data-id="${r.p.id}">${esc(r.p.name)}</button>${exBadge(r.p)}<div class="mb"><i class="${b >= 0 ? 'l' : ''}" style="width:${pc}%"></i></div></td><td>${money(r.given)}</td><td class="hide-m">${money(r.goal)}</td>
       <td class="net ${b > 0 ? 'pos' : b < 0 ? 'neg' : ''}">${sgn(b)}<small>${b < 0 ? 'still to give' : b > 0 ? 'extra given' : 'paid up'}</small></td>
-      ${ADMIN ? `<td class="ta"><button class="btn sm pri hide-m" data-act="add-con" data-pid="${r.p.id}">Add payment</button> ${menu([mi('add-con', 'Add payment', `class="only-m" data-pid="${r.p.id}"`), mi('edit-ppl', 'Rename', `data-id="${r.p.id}"`), mi('ehist', 'History', `data-t="person" data-id="${r.p.id}"`), mi('del', 'Remove member', `data-t="person" data-id="${r.p.id}"`)])}</td>` : ''}</tr>`; }).join('')}
+      ${ADMIN ? `<td class="ta"><button class="btn sm pri hide-m" data-act="add-con" data-pid="${r.p.id}">Add money</button> ${menu([mi('add-con', 'Add money', `class="only-m" data-pid="${r.p.id}"`), mi('edit-ppl', 'Edit', `data-id="${r.p.id}"`), mi('ehist', 'History', `data-t="person" data-id="${r.p.id}"`), mi('del', 'Remove member', `data-t="person" data-id="${r.p.id}"`)])}</td>` : ''}</tr>`; }).join('')}
     </tbody><tfoot><tr><td>Total</td><td>${money(given)}</td><td class="hide-m">${money(c.target)}</td><td class="net ${tb > 0 ? 'pos' : tb < 0 ? 'neg' : ''}">${sgn(tb)}</td>${ADMIN ? '<td></td>' : ''}</tr></tfoot></table></div></div>`;
 }
 function conList() {
@@ -557,12 +601,12 @@ function conList() {
   if (CF.who) l = l.filter(c => c.personId === CF.who);
   if (CF.q) l = l.filter(c => (c.note + pname(c.personId)).toLowerCase().includes(CF.q.toLowerCase()));
   l.sort(byTime);
-  if (!l.length) return emptyBox('No payments yet', ADMIN ? 'Record the first payment to start the balances.' : 'Nothing has been recorded yet.', ADMIN ? `<button class="btn pri" data-act="add-con">Add payment</button>` : '');
+  if (!l.length) return emptyBox('No payments yet', ADMIN ? 'Record the first payment to start the balances.' : 'Nothing has been recorded yet.', ADMIN ? `<button class="btn pri" data-act="add-con">Add money</button>` : '');
   const live = l.filter(c => !c.deleted);
   return `<div class="sum"><b>${live.length}</b> payments, <b>${money(live.reduce((s, c) => s + +c.amount, 0))}</b> in total</div><div class="rows" style="margin-top:12px">${l.map(c => {
     const items = !ADMIN ? [] : c.deleted ? [mi('restore', 'Restore', `data-t="contribution" data-id="${c.id}"`)] : [mi('edit-con', 'Edit', `data-id="${c.id}"`), mi('ehist', 'History', `data-t="contribution" data-id="${c.id}"`), mi('del', 'Delete', `data-t="contribution" data-id="${c.id}"`)];
     return `<div class="ri ${c.deleted ? 'gone' : ''}">${av(pname(c.personId))}<div class="rm"><div class="rt">${esc(pname(c.personId))}${c.deleted ? '<span class="badge">deleted</span>' : c.updatedAt ? `<button class="badge" data-act="ehist" data-t="contribution" data-id="${c.id}">edited</button>` : ''}</div>
-      <div class="rs">${[fmtDate(c.date) + (c.time ? ', ' + fmtClock(c.time) : ''), c.method, c.ref].filter(Boolean).map(esc).join(', ')}</div>${c.note ? `<div class="rn">${esc(c.note)}</div>` : ''}</div><div class="ra pos">+${money(c.amount)}</div>${items.length ? menu(items) : ''}</div>`;
+      <div class="rs">${[fmtDate(c.date) + (tm(c) ? ', ' + tm(c) : ''), c.method, c.ref].filter(Boolean).map(esc).join(', ')}</div>${c.note ? `<div class="rn">${esc(c.note)}</div>` : ''}</div><div class="ra pos">+${money(c.amount)}</div>${items.length ? menu(items) : ''}</div>`;
   }).join('')}</div>`;
 }
 const peopleList = () => pv === 'bal' ? balTable() : conList();
@@ -570,7 +614,7 @@ function vPpl() {
   const c = calc();
   return `<div class="pagehead"><div><h2>Members</h2><p>Who has paid, and who still owes their share.</p></div>
     <div class="row"><div class="seg"><button class="${pv === 'bal' ? 'on' : ''}" data-act="pv" data-id="bal">Balances</button><button class="${pv === 'pay' ? 'on' : ''}" data-act="pv" data-id="pay">Payments</button></div>
-    ${ADMIN ? `<button class="btn pri" data-act="${pv === 'bal' ? 'add-ppl' : 'add-con'}">${pv === 'bal' ? 'Add member' : 'Add payment'}</button>` : ''}</div></div>
+    ${ADMIN ? `<button class="btn pri" data-act="${pv === 'bal' ? 'add-ppl' : 'add-con'}">${pv === 'bal' ? 'Add member' : 'Add money'}</button>` : ''}</div></div>
   <div class="facts"><div><span>Target budget</span><b>${money(c.target)}</b></div><div><span>Members</span><b>${c.n}</b></div><div><span>Each member pays</span><b>${money(c.each)}</b></div><div><span>Still to collect</span><b>${money(c.toCollect)}</b></div></div>
   ${pv === 'bal' ? `<div class="filters"><input type="search" placeholder="Search members" data-g="MF" data-f="q" value="${esc(MF.q)}">
       <select data-g="MF" data-f="sort" aria-label="Sort"><option value="owe" ${MF.sort === 'owe' ? 'selected' : ''}>Owing most first</option><option value="paid" ${MF.sort === 'paid' ? 'selected' : ''}>Paid most first</option><option value="name" ${MF.sort === 'name' ? 'selected' : ''}>Name</option></select></div>`
@@ -606,7 +650,7 @@ function vSet() {
   const sg = rows.reduce((s, r) => s + r.given, 0), ss = rows.reduce((s, r) => s + r.share, 0), sn = Math.round((sg - ss) * 100) / 100;
   return `<div class="pagehead"><div><h2>Settle up</h2><p>${fin ? 'The final amounts for the end of the trip.' : 'What each member would get back if the trip ended today.'}</p></div>
     <div class="row"><button class="btn" data-act="print">Print</button><button class="btn" data-act="copy">Copy summary</button><button class="btn pri" data-act="share">Share summary</button></div></div>
-  ${fin ? '' : `<div class="notice">This is an estimate and changes as more is spent. It becomes final after the trip end date${S.settings.end ? '' : ' (set one in Trip management)'}.</div>`}
+  ${fin ? '' : `<div class="notice">This is an estimate and changes as more is spent. It becomes final after the trip end date${S.settings.end ? '' : ' (set one in Settings)'}.</div>`}
   <div class="facts"><div><span>Collected</span><b>${money(c.collected)}</b></div><div><span>Total spent</span><b>${money(c.total)}</b></div>
     <div><span>${c.fund >= 0 ? 'Left to give back' : 'Short by'}</span><b>${money(Math.abs(c.fund))}</b></div><div><span>Average cost per person</span><b>${money(c.n ? c.total / c.n : 0)}</b></div></div>
   ${rows.length ? `<div class="rows"><table class="tbl"><thead><tr><th>Member</th><th>Gave</th><th class="hide-m">Share of cost</th><th>Result</th></tr></thead><tbody>
@@ -619,19 +663,19 @@ function vSet() {
 function memberDlg(id) {
   const c = calc(), r = c.per[id]; if (!r) return;
   const pays = S.contributions.filter(x => x.personId === id && !x.deleted).sort(byTime);
-  const net = Math.round(r.net * 100) / 100, b = Math.round((r.given - c.each) * 100) / 100;
+  const net = Math.round(r.net * 100) / 100, b = Math.round((r.given - r.goal) * 100) / 100;
   openDlg(`<h3>${esc(r.p.name)}</h3>
-    <div class="facts" style="margin-bottom:18px"><div><span>Given so far</span><b>${money(r.given)}</b></div><div><span>Target to give</span><b>${money(c.each)}</b></div>
+    <div class="facts" style="margin-bottom:18px"><div><span>Given so far</span><b>${money(r.given)}</b></div><div><span>Target to give</span><b>${money(r.goal)}</b></div>
       <div><span>${b < 0 ? 'Still to give' : b > 0 ? 'Given extra' : 'Target status'}</span><b>${b === 0 ? 'Paid up' : money(Math.abs(b))}</b></div><div><span>Share of spending</span><b>${money(r.share)}</b></div></div>
     <p style="margin-bottom:18px">${net > 0.009 ? `If the trip ended today, ${esc(r.p.name)} gets back <b style="color:var(--lime)">${money(net)}</b>.` : net < -0.009 ? `If the trip ended today, ${esc(r.p.name)} needs to pay <b>${money(-net)}</b>.` : 'Nothing to settle right now.'}</p>
-    <h4>Payments</h4>${pays.length ? `<div class="rows">${pays.map(x => `<div class="ri"><div class="rm"><div class="rt">${fmtDate(x.date)}${x.time ? ', ' + fmtClock(x.time) : ''}</div><div class="rs">${esc([x.method, x.ref, x.note].filter(Boolean).join(', ')) || 'Payment'}</div></div><div class="ra pos">+${money(x.amount)}</div></div>`).join('')}</div>` : '<p class="hint">No payments yet.</p>'}
-    <div class="row end" style="margin-top:20px">${ADMIN ? `<button class="btn pri" data-act="add-con" data-pid="${id}">Add payment</button>` : ''}<button class="btn" data-act="close">Close</button></div>`);
+    <h4>Payments</h4>${pays.length ? `<div class="rows">${pays.map(x => `<div class="ri"><div class="rm"><div class="rt">${fmtDate(x.date)}${tm(x) ? ', ' + tm(x) : ''}</div><div class="rs">${esc([x.method, x.ref, x.note].filter(Boolean).join(', ')) || 'Payment'}</div></div><div class="ra pos">+${money(x.amount)}</div></div>`).join('')}</div>` : '<p class="hint">No payments yet.</p>'}
+    <div class="row end" style="margin-top:20px">${ADMIN ? `<button class="btn pri" data-act="add-con" data-pid="${id}">Add money</button>` : ''}<button class="btn" data-act="close">Close</button></div>`);
 }
 
 /* activity */
 function commitHTML(h) {
   return `<div class="commit ${h.action}"><div class="cmsg">${esc(h.message)}</div>
-    <div class="cmeta"><span>${fmtTime(h.ts)}, by ${esc(h.who)}</span><span>commit ${h.hash}</span>${ADMIN ? `<button class="lnk" data-act="revert" data-id="${h.id}">Undo this change</button>` : ''}</div></div>`;
+    <div class="cmeta"><span>${fmtTime(h.ts)}, by ${esc(h.who)}</span><span>commit ${h.hash}</span>${ADMIN && h.type !== 'category' && h.type !== 'settings' ? `<button class="lnk" data-act="revert" data-id="${h.id}">Undo this change</button>` : ''}</div></div>`;
 }
 function hisList(list) {
   let l = (list || S.history).slice().sort((a, b) => b.ts - a.ts);
@@ -644,8 +688,34 @@ function hisList(list) {
 function vHis() {
   return `<div class="pagehead"><div><h2>Activity</h2><p>A full record of every change, like a commit log. Nothing is ever lost.</p></div></div>
   <div class="filters"><input type="search" placeholder="Search changes" data-g="HF" data-f="q" value="${esc(HF.q)}">
-    <select data-g="HF" data-f="type" aria-label="Record type"><option value="">Everything</option>${[['expense', 'Expenses'], ['contribution', 'Payments'], ['person', 'Members'], ['settings', 'Trip details']].map(([v, l]) => `<option value="${v}" ${HF.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <select data-g="HF" data-f="type" aria-label="Record type"><option value="">Everything</option>${[['expense', 'Expenses'], ['contribution', 'Payments'], ['person', 'Members'], ['trip', 'Trips'], ['category', 'Categories']].map(([v, l]) => `<option value="${v}" ${HF.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div id="list">${hisList()}</div>`;
+}
+
+const exBadge = p => p.exception === 'exempt' ? '<span class="badge">Pays no share</span>' : p.exception === 'custom' ? `<span class="badge">Custom ${money(p.target)}</span>` : '';
+function vCfg() {
+  const c = calc(), cats = catList(), t = S.trip;
+  const used = {}; R.expenses.forEach(e => { if (!e.deleted) used[e.category] = (used[e.category] || 0) + 1; });
+  const tripRows = S.trips.map(x => `<div class="ri">${av(x.name)}<div class="rm"><div class="rt">${esc(x.name)}<span class="badge">${x.live === false ? 'Hidden' : 'Live'}</span>${x.id === TID ? '<span class="badge">Selected</span>' : ''}</div>
+    <div class="rs">${esc([x.destination, x.start && fmtDate(x.start) + (x.end ? ' to ' + fmtDate(x.end) : ''), +x.budget ? 'Budget ' + money(x.budget) : ''].filter(Boolean).join(', ')) || 'No details yet'}</div></div>
+    ${menu([mi('pick-trip', 'Select', `data-id="${esc(x.id)}"`), mi('edit-trip', 'Edit', `data-id="${esc(x.id)}"`), mi('trip-live', x.live === false ? 'Make live' : 'Turn off', `data-id="${esc(x.id)}"`), mi('ehist', 'History', `data-t="trip" data-id="${esc(x.id)}"`)])}</div>`).join('');
+  const people = S.people.slice().sort((a, b) => (a.deleted ? 1 : 0) - (b.deleted ? 1 : 0) || a.name.localeCompare(b.name));
+  const memRows = people.map(p => {
+    const r = c.per[p.id];
+    const items = p.deleted ? [mi('restore', 'Restore', `data-t="person" data-id="${p.id}"`)]
+      : [mi('edit-ppl', 'Edit', `data-id="${p.id}"`), mi('add-con', 'Add money', `data-pid="${p.id}"`), mi('ehist', 'History', `data-t="person" data-id="${p.id}"`), mi('del', 'Remove member', `data-t="person" data-id="${p.id}"`)];
+    return `<div class="ri ${p.deleted ? 'gone' : ''}">${av(p.name)}<div class="rm"><div class="rt">${esc(p.name)}${exBadge(p)}${p.deleted ? '<span class="badge">removed</span>' : ''}</div><div class="rs">Given ${money(r.given)} of ${money(r.goal)}</div></div>${menu(items)}</div>`;
+  }).join('');
+  const catRows = cats.map(k => `<div class="ri">${av(k)}<div class="rm"><div class="rt">${esc(k)}</div><div class="rs">${used[k] || 0} ${used[k] === 1 ? 'expense' : 'expenses'}</div></div>${menu([mi('edit-cat', 'Rename', `data-id="${esc(k)}"`), mi('del-cat', 'Delete', `data-id="${esc(k)}"`)])}</div>`).join('');
+  return `<div class="pagehead"><div><h2>Settings</h2><p>Only admins can see this page.</p></div></div>
+  <div class="shd"><h3>Trips</h3><button class="btn sm pri" data-act="add-trip">Add trip</button></div>
+  <p class="hint" style="margin-bottom:10px">Live trips are visible to everyone. A turned-off trip stays saved and only admins can see it.</p>
+  <div class="rows">${tripRows}</div>
+  <div class="shd"><h3>Members of ${esc(t?.name || '')}</h3><button class="btn sm pri" data-act="add-ppl">Add member</button></div>
+  <p class="hint" style="margin-bottom:10px">Pays no share: not counted in the budget split or shared expenses. Custom target: pays that amount, and shares expenses in the same proportion.</p>
+  ${people.length ? `<div class="rows">${memRows}</div>` : emptyBox('No members yet', 'Add the people on this trip.')}
+  <div class="shd"><h3>Categories</h3><button class="btn sm pri" data-act="add-cat">Add category</button></div>
+  <div class="rows">${catRows}</div>`;
 }
 
 /* ---------- dialogs & forms ---------- */
@@ -656,11 +726,11 @@ const opt = (v, cur, l) => `<option value="${esc(v)}" ${v === cur ? 'selected' :
 const btnRow = `<div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Save</button></div>`;
 
 function expForm(id) {
-  const e = id ? S.expenses.find(x => x.id === id) : null, ppl = act(S.people), sp = e?.splitAmong || [];
+  const e = id ? S.expenses.find(x => x.id === id) : null, ppl = sharers(), sp = e?.splitAmong || [];
   openDlg(`<form data-form="expense" data-id="${id || ''}"><h3>${e ? 'Edit expense' : 'Add expense'}</h3>
     <label>Name<input name="name" required value="${esc(e?.name)}" placeholder="Lunch at the beach"></label>
     <div class="g2"><label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${e?.amount ?? ''}"></label>
-    <label>Category<select name="category">${CATS.map(c => opt(c, e?.category)).join('')}</select></label></div>
+    <label>Category<select name="category">${catsWith(e?.category).map(c => opt(c, e?.category)).join('')}</select></label></div>
     <div class="g2"><label>Track date<input name="date" type="date" required value="${e?.date || today()}"></label>
     <label>Time<input name="time" type="time" required value="${e?.time || nowT()}"></label></div>
     <label>Where it was spent<input name="place" value="${esc(e?.place)}" placeholder="Cox's Bazar"></label>
@@ -671,7 +741,7 @@ function expForm(id) {
 function conForm(id, pid) {
   const c = id ? S.contributions.find(x => x.id === id) : null, ppl = act(S.people);
   if (!ppl.length && !c) { toast('Add people first'); return; }
-  openDlg(`<form data-form="contribution" data-id="${id || ''}"><h3>${c ? 'Edit payment' : 'Add payment'}</h3>
+  openDlg(`<form data-form="contribution" data-id="${id || ''}"><h3>${c ? 'Edit money' : 'Add money'}</h3>
     <label>Person<select name="personId">${ppl.map(p => opt(p.id, c?.personId || pid, p.name)).join('')}</select></label>
     <div class="g2"><label>Amount given<input name="amount" type="number" step="0.01" min="0.01" required value="${c?.amount ?? ''}"></label>
     <label>Paid by<select name="method">${['Cash', 'bKash', 'Nagad', 'Rocket', 'Bank', 'Other'].map(m => opt(m, c?.method)).join('')}</select></label></div>
@@ -682,11 +752,41 @@ function conForm(id, pid) {
     ${c ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
 }
 function pplForm(id) {
-  const p = id ? S.people.find(x => x.id === id) : null;
-  openDlg(`<form data-form="person" data-id="${id || ''}"><h3>${p ? 'Rename person' : 'Add person'}</h3>
+  const p = id ? S.people.find(x => x.id === id) : null, ex = p?.exception || 'none';
+  openDlg(`<form data-form="person" data-id="${id || ''}"><h3>${p ? 'Edit member' : 'Add member'}</h3>
     <label>Name<input name="name" required value="${esc(p?.name)}"></label>
-    ${p ? '' : `<label>Amount given so far (optional)<input name="given" type="number" min="0" step="0.01" placeholder="0"></label>`}${btnRow}</form>`);
+    <label>Exception<select name="exception" onchange="this.form.querySelector('[data-cust]').hidden=this.value!=='custom'">${[['none', 'None, pays an equal share'], ['exempt', 'Pays no share'], ['custom', 'Custom target amount']].map(([v, l]) => opt(v, ex, l)).join('')}</select></label>
+    <label data-cust ${ex === 'custom' ? '' : 'hidden'}>Custom target amount<input name="target" type="number" min="0" step="0.01" value="${+p?.target || ''}"></label>
+    ${p ? '' : `<label>Amount given so far (optional)<input name="given" type="number" min="0" step="0.01" placeholder="0"></label>`}
+    <div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button>${p ? '' : '<button class="btn" name="more" value="1">Save &amp; add another</button>'}<button class="btn pri">Save</button></div></form>`);
 }
+function catForm(old) {
+  openDlg(`<form data-form="category" data-id="${esc(old || '')}"><h3>${old ? 'Rename category' : 'Add category'}</h3>
+    <label>Name<input name="name" required value="${esc(old)}" placeholder="Snacks"></label>${btnRow}</form>`);
+}
+function saveCats(list, message, action, extra = []) {
+  const e = mkEntry({action, type: 'category', entityId: 'cats', entityName: 'Categories', message, tripId: '*'});
+  B.commit([{c: 'meta', id: 'settings', data: {cats: list}}, ...extra, {c: 'history', id: uid(), data: e}]).catch(fail);
+}
+function renameCat(old, nw) {
+  const hit = R.expenses.filter(e => e.category === old);
+  saveCats(catList().map(k => k === old ? nw : k), `Renamed category "${old}" to "${nw}" (${hit.length} ${hit.length === 1 ? 'expense' : 'expenses'} updated)`, 'update', hit.map(e => ({c: 'expenses', id: e.id, data: {...e, category: nw}})));
+}
+function delCat(name) {
+  const list = catList();
+  if (list.length <= 1) { toast('Keep at least one category'); return; }
+  if (!confirm(`Delete category "${name}"? Existing expenses keep their label.`)) return;
+  saveCats(list.filter(k => k !== name), `Deleted category "${name}"`, 'delete');
+  toast('Category deleted');
+}
+function toggleLive(id) {
+  const t = current('trip', id); if (!t) return;
+  const off = t.live !== false;
+  if (off && !confirm(`Turn off "${t.name}"? It stays saved and only admins can see it.`)) return;
+  const {virtual, ...rest} = t;
+  if (commitChange('trip', t, {...rest, live: !off, updatedAt: Date.now()}, '', 'update')) toast(off ? 'Trip turned off' : 'Trip is live');
+}
+
 function loginForm() {
   openDlg(`<form data-form="login"><h3>Admin sign in</h3><div class="err" id="lerr"></div>
     <label>Email or username<input name="u" required autocomplete="username" placeholder="Admin email"></label>
@@ -694,19 +794,20 @@ function loginForm() {
     <div class="row end"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn pri">Sign in</button></div></form>`);
 }
 function entityHistory(type, id) {
-  const l = S.history.filter(h => h.type === type && h.entityId === id);
+  const l = R.history.filter(h => h.type === type && h.entityId === id);
   openDlg(`<h3>History</h3>${hisList(l)}<div class="row end"><button class="btn" data-act="close">Close</button></div>`, true);
 }
 
-function tripForm() {
-  const s = S.settings, c = calc();
-  openDlg(`<form data-form="settings"><h3>Trip management</h3>
-    <label>Trip name<input name="trip" required value="${esc(s.trip)}"></label>
+function tripForm(id) {
+  const t = id ? S.trips.find(x => x.id === id) : null, s = t || {name: '', destination: '', start: '', end: '', budget: 0, live: true}, c = calc();
+  openDlg(`<form data-form="trip" data-id="${esc(id || '')}"><h3>${t ? 'Edit trip' : 'Add trip'}</h3>
+    <label>Trip name<input name="name" required value="${esc(s.name)}"></label>
     <label>Destination<input name="destination" value="${esc(s.destination)}" placeholder="Sylhet"></label>
     <div class="g2"><label>Start date<input name="start" type="date" value="${esc(s.start)}"></label><label>End date<input name="end" type="date" value="${esc(s.end)}"></label></div>
     <label>Target budget (total to collect)<input name="budget" type="number" min="0" step="0.01" value="${+s.budget || ''}" placeholder="5000"></label>
-    <p class="hint" style="margin:-4px 0 14px">${c.n} members, so each pays ${money(c.each)}. Everyone is calculated equally.</p>
-    <label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>${btnRow}</form>`);
+    ${t && t.id === TID ? `<p class="hint" style="margin:-4px 0 14px">${c.n} members, so each regular member pays ${money(c.each)}. Set exceptions per member in Settings.</p>` : ''}
+    <label class="chk" style="margin-bottom:14px"><input type="checkbox" name="live" ${s.live === false ? '' : 'checked'}>Visible to everyone</label>
+    ${t ? `<label>Commit message (optional)<input name="reason" placeholder="Why this change?"></label>` : ''}${btnRow}</form>`);
 }
 function accountDlg() {
   openDlg(`<h3>Password and backup</h3>
@@ -737,31 +838,40 @@ function onSubmit(ev) {
   }
   if (kind === 'expense') {
     const old = id ? S.expenses.find(x => x.id === id) : null;
-    const after = {id: id || uid(), name: v('name'), amount: +v('amount'), date: v('date'), time: v('time'), category: v('category'), place: v('place'), splitAmong: fd.getAll('split').length === act(S.people).length ? [] : fd.getAll('split'),
+    const after = {id: id || uid(), name: v('name'), amount: +v('amount'), date: v('date'), time: v('time'), category: v('category'), place: v('place'), tripId: old ? (old.tripId || 'main') : TID, splitAmong: fd.getAll('split').length === sharers().length ? [] : fd.getAll('split'),
       note: v('note'), createdAt: old?.createdAt || now, createdBy: old?.createdBy || 'admin', updatedAt: old ? now : null, deleted: false};
     if (commitChange('expense', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Expense updated' : 'Expense added'); }
   } else if (kind === 'contribution') {
     const old = id ? S.contributions.find(x => x.id === id) : null;
-    const after = {id: id || uid(), personId: v('personId'), amount: +v('amount'), date: v('date'), time: v('time'), method: v('method'), ref: v('ref'), note: v('note'), createdAt: old?.createdAt || now, createdBy: 'admin', updatedAt: old ? now : null, deleted: false};
-    if (commitChange('contribution', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Payment updated' : 'Payment added'); }
+    const after = {id: id || uid(), tripId: old ? (old.tripId || 'main') : TID, personId: v('personId'), amount: +v('amount'), date: v('date'), time: v('time'), method: v('method'), ref: v('ref'), note: v('note'), createdAt: old?.createdAt || now, createdBy: 'admin', updatedAt: old ? now : null, deleted: false};
+    if (commitChange('contribution', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Money updated' : 'Money added'); }
   } else if (kind === 'person') {
-    const old = id ? S.people.find(x => x.id === id) : null;
-    const after = {id: id || uid(), name: v('name'), createdAt: old?.createdAt || now, updatedAt: old ? now : null, deleted: false};
+    const old = id ? S.people.find(x => x.id === id) : null, ex = v('exception') === 'none' ? '' : v('exception');
+    const after = {id: id || uid(), tripId: old ? (old.tripId || 'main') : TID, name: v('name'), exception: ex, target: ex === 'custom' ? +v('target') || 0 : '', createdAt: old?.createdAt || now, updatedAt: old ? now : null, deleted: false};
     if (commitChange('person', old, after, '', old ? 'update' : 'create')) {
       const g = +v('given');
-      if (!old && g > 0) commitChange('contribution', null, {id: uid(), personId: after.id, amount: g, date: today(), time: nowT(), note: 'Amount given at start', createdAt: now, createdBy: 'admin', updatedAt: null, deleted: false}, '', 'create');
-      dlg.close(); toast(old ? 'Person renamed' : 'Person added');
+      if (!old && g > 0) commitChange('contribution', null, {id: uid(), tripId: TID, personId: after.id, amount: g, date: today(), time: nowT(), note: 'Amount given at start', createdAt: now, createdBy: 'admin', updatedAt: null, deleted: false}, '', 'create');
+      if (!old && ev.submitter?.name === 'more') { toast(`${after.name} added. Add the next one.`); pplForm(); dlg.querySelector('[name=name]')?.focus(); }
+      else { dlg.close(); toast(old ? 'Member updated' : 'Member added'); }
     }
-  } else if (kind === 'settings') {
-    const old = current('settings'), after = {id: 'settings', trip: v('trip'), destination: v('destination'), start: v('start'), end: v('end'), budget: +v('budget') || 0};
-    if (commitChange('settings', old, after, v('reason'), 'update')) { dlg.close(); toast('Trip saved'); }
+  } else if (kind === 'trip') {
+    const old = id ? S.trips.find(x => x.id === id) : null;
+    const after = {id: id || uid(), name: v('name'), destination: v('destination'), start: v('start'), end: v('end'), budget: +v('budget') || 0, live: fd.has('live'), createdAt: old ? (old.createdAt ?? now) : now, updatedAt: old ? now : null};
+    if (!old) setPref(after.id);
+    if (commitChange('trip', old, after, v('reason'), old ? 'update' : 'create')) { dlg.close(); toast(old ? 'Trip saved' : 'Trip added'); }
+  } else if (kind === 'category') {
+    const nm = v('name'), list = catList();
+    if (list.some(k => k.toLowerCase() === nm.toLowerCase() && k !== id)) { toast('That category already exists'); return; }
+    if (!id) { saveCats([...list, nm], `Added category "${nm}"`, 'create'); dlg.close(); toast('Category added'); }
+    else if (id !== nm) { renameCat(id, nm); dlg.close(); toast('Category renamed'); }
+    else dlg.close();
   }
 }
 
 /* ---------- actions ---------- */
 function csv() {
   const rows = [['Name', 'Amount', 'Track date', 'Time', 'Category', 'Where spent', 'Split among', 'Notes', 'Added at', 'Last edited']];
-  filterExp().filter(e => !e.deleted).forEach(e => rows.push([e.name, e.amount, e.date, fmtClock(e.time), e.category, e.place, fmtVal('splitAmong', e.splitAmong), e.note, fmtTime(e.createdAt), e.updatedAt ? fmtTime(e.updatedAt) : '']));
+  filterExp().filter(e => !e.deleted).forEach(e => rows.push([e.name, e.amount, e.date, tm(e), e.category, e.place, fmtVal('splitAmong', e.splitAmong), e.note, fmtTime(e.createdAt), e.updatedAt ? fmtTime(e.updatedAt) : '']));
   const t = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   download('expenses.csv', '\ufeff' + t, 'text/csv');
 }
@@ -778,19 +888,20 @@ function revert(hid) {
   const h = S.history.find(x => x.id === hid); if (!h) return;
   const cur = current(h.type, h.entityId); if (!cur) return;
   if (!confirm(`Undo "${h.message}"?`)) return;
-  const target = h.before ? {...h.before} : {...cur, deleted: true};
-  if (h.type !== 'settings') target.updatedAt = Date.now();
+  const target = h.before ? {...h.before} : h.type === 'trip' ? {...cur, live: false} : {...cur, deleted: true};
+  delete target.virtual;
+  target.updatedAt = Date.now();
   if (commitChange(h.type, cur, target, 'undo ' + h.hash, 'revert')) { if (dlg.open) dlg.close(); toast('Change undone'); }
 }
 function backup() {
-  const {settings, ...rest} = S; download('trip-backup.json', JSON.stringify({...rest, settings: {trip: settings.trip, destination: settings.destination, start: settings.start, end: settings.end, budget: settings.budget}}, null, 2), 'application/json');
+  download('trip-backup.json', JSON.stringify({trips: tripsAll().map(({virtual, ...t}) => t), people: R.people, expenses: R.expenses, contributions: R.contributions, history: R.history, settings: {cur: R.settings.cur, cats: R.settings.cats}}, null, 2), 'application/json');
 }
 function restoreFile(file) {
   const r = new FileReader();
   r.onload = () => {
     try {
       const d = JSON.parse(r.result), ops = [];
-      ['people', 'expenses', 'contributions', 'history'].forEach(c => (d[c] || []).forEach(x => { if (c !== 'history' || !S.history.some(y => y.id === x.id)) ops.push({c, id: x.id, data: x}); }));
+      ['trips', 'people', 'expenses', 'contributions', 'history'].forEach(c => (d[c] || []).forEach(x => { if (c !== 'history' || !S.history.some(y => y.id === x.id)) ops.push({c, id: x.id, data: x}); }));
       if (d.settings) ops.push({c: 'meta', id: 'settings', data: {id: 'settings', ...d.settings}});
       if (!ops.length) throw new Error('empty');
       B.commit(ops).then(() => toast(`Restored ${ops.length} records`)).catch(e => toast('Restore failed: ' + (e.code || e.message)));
@@ -809,7 +920,13 @@ document.addEventListener('click', ev => {
   else if (a === 'close') dlg.close();
   else if (a === 'login') loginForm();
   else if (a === 'logout') B.logout().then(() => toast('Signed out'));
-  else if (a === 'edit-trip') tripForm();
+  else if (a === 'add-trip') tripForm();
+  else if (a === 'edit-trip') tripForm(id || TID);
+  else if (a === 'pick-trip') { setPref(id); rebuild(); render(); }
+  else if (a === 'trip-live') toggleLive(id);
+  else if (a === 'add-cat') catForm();
+  else if (a === 'edit-cat') catForm(id);
+  else if (a === 'del-cat') delCat(id);
   else if (a === 'account') accountDlg();
   else if (a === 'add-exp') expForm();
   else if (a === 'edit-exp') expForm(id);
@@ -837,6 +954,7 @@ const onFilter = ev => {
 };
 document.addEventListener('input', onFilter);
 document.addEventListener('change', ev => {
+  if (ev.target.dataset.trip !== undefined) { setPref(ev.target.value); rebuild(); render(); return; }
   if (ev.target.id === 'rf' && ev.target.files[0]) { restoreFile(ev.target.files[0]); ev.target.value = ''; return; }
   if (ev.target.dataset.g && ev.target.type !== 'search' && ev.target.type !== 'text') onFilter(ev);
 });
@@ -844,7 +962,7 @@ document.addEventListener('submit', onSubmit);
 addEventListener('online', render); addEventListener('offline', render);
 
 /* ---------- boot ---------- */
-const onState = d => { READY = d.__ready !== false; S = {...DEF(), ...d, settings: {...DEF().settings, ...d.settings}}; if (!dlg.open) render(); else { render(); } };
+const onState = d => { READY = d.__ready !== false; R = {...DEF(), ...d, settings: {...DEF().settings, ...d.settings}}; rebuild(); render(); };
 (async () => {
   try { B = window.FIREBASE_CONFIG ? await fbBackend() : localBackend(); }
   catch (e) { console.error(e); B = localBackend(); toast('Could not reach Firebase, using demo mode'); }
