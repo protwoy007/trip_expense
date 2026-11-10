@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email.lower() in ['admin1@example.com', 'admin2@example.com'];
+    }
+    function validMoney() {
+      return request.resource.data.amount is number && request.resource.data.amount > 0;
+    }
+
+    match /expenses/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validMoney();
+      allow delete: if false;
+    }
+    match /contributions/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validMoney();
+      allow delete: if false;
+    }
+    match /people/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    match /meta/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    // The change log can only be added to, never edited or removed.
+    match /history/{id} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}
